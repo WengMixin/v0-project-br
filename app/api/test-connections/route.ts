@@ -10,22 +10,25 @@ interface ConnectionStatus {
 export async function GET() {
   const results: ConnectionStatus[] = []
 
-  // Test FRED API
+// Test FRED API - 测试CPI数据获取（同比变化率）
   const fredKey = process.env.FRED_API_KEY
   if (fredKey) {
     const start = Date.now()
     try {
+      // 使用 units=pc1 获取核心CPI同比变化率
       const res = await fetch(
-        `https://api.stlouisfed.org/fred/series/observations?series_id=DGS10&api_key=${fredKey}&file_type=json&limit=1`
+        `https://api.stlouisfed.org/fred/series/observations?series_id=CPILFESL&api_key=${fredKey}&file_type=json&limit=1&sort_order=desc&units=pc1`
       )
       const latency = Date.now() - start
       if (res.ok) {
         const data = await res.json()
-        if (data.observations) {
+        if (data.observations && data.observations.length > 0) {
+          const obs = data.observations[0]
+          const value = parseFloat(obs.value).toFixed(2)
           results.push({
             name: 'FRED API',
             status: 'connected',
-            message: `连接成功，最新10年期国债数据: ${data.observations[0]?.value || 'N/A'}%`,
+            message: `连接成功，核心CPI同比: ${value}% (${obs.date})`,
             latency
           })
         } else {

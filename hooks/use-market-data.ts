@@ -115,3 +115,45 @@ export function useFredData(series: string = 'DGS10') {
     refresh: mutate
   }
 }
+
+export interface CPIDataResponse {
+  data: {
+    headline: number | null
+    core: number | null
+    coreMonthly: number | null
+    date: string
+    nextReleaseDate: string
+    status: 'low' | 'moderate' | 'high'
+    isLive: boolean
+  }
+  history?: {
+    headline: Array<{ date: string; value: number }>
+    core: Array<{ date: string; value: number }>
+  }
+  meta?: {
+    source: string
+    series: { headline: string; core: string }
+    timestamp: string
+  }
+  error?: string
+}
+
+export function useCPIData() {
+  const { data, error, isLoading, mutate } = useSWR<CPIDataResponse>(
+    '/api/cpi',
+    fetcher,
+    {
+      refreshInterval: 3600000, // 每小时刷新，CPI数据每月更新
+      dedupingInterval: 1800000,
+    }
+  )
+  
+  return {
+    data: data?.data,
+    history: data?.history,
+    isLoading,
+    isError: error,
+    isLive: data?.data?.isLive ?? false,
+    refresh: mutate
+  }
+}

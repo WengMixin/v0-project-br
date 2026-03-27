@@ -2,17 +2,20 @@
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { BarChart3, AlertTriangle, Calendar } from 'lucide-react'
+import { BarChart3, AlertTriangle, Calendar, Wifi, WifiOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { CPIData } from '@/lib/market-data'
 import { THRESHOLDS } from '@/lib/market-data'
+import { Spinner } from '@/components/ui/spinner'
 
 interface CPICardProps {
   data: CPIData
   nextReleaseDate?: string
+  isLoading?: boolean
+  isLive?: boolean
 }
 
-export function CPICard({ data, nextReleaseDate = '2026-04-10' }: CPICardProps) {
+export function CPICard({ data, nextReleaseDate = '2026-04-10', isLoading, isLive }: CPICardProps) {
   const getStatusStyle = (status: CPIData['status']) => {
     switch (status) {
       case 'high':
@@ -48,7 +51,20 @@ export function CPICard({ data, nextReleaseDate = '2026-04-10' }: CPICardProps) 
             </div>
             <div>
               <CardTitle className="text-base">核心通胀数据</CardTitle>
-              <CardDescription>美联储最看重的指标</CardDescription>
+              <CardDescription className="flex items-center gap-2">
+                美联储最看重的指标
+                {isLive !== undefined && (
+                  isLive ? (
+                    <span className="flex items-center gap-1 text-success">
+                      <Wifi className="size-3" /> FRED
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-warning">
+                      <WifiOff className="size-3" /> 备用
+                    </span>
+                  )
+                )}
+              </CardDescription>
             </div>
           </div>
           <Badge variant="outline" className={cn('text-xs', getStatusStyle(data.status))}>
@@ -58,6 +74,11 @@ export function CPICard({ data, nextReleaseDate = '2026-04-10' }: CPICardProps) 
       </CardHeader>
       
       <CardContent>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <Spinner className="size-6" />
+          </div>
+        ) : (
         <div className="grid grid-cols-3 gap-4 mb-4">
           <div className="text-center p-3 rounded-lg bg-secondary/50">
             <div className="text-xs text-muted-foreground mb-1">整体 CPI</div>
@@ -126,6 +147,7 @@ export function CPICard({ data, nextReleaseDate = '2026-04-10' }: CPICardProps) 
               </div>
             </div>
           </div>
+        )}
         )}
       </CardContent>
     </Card>

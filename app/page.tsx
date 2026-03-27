@@ -7,12 +7,13 @@ import { FedStatementsCard } from '@/components/dashboard/fed-statements-card'
 import { CPICard } from '@/components/dashboard/cpi-card'
 import { StrategyTips } from '@/components/dashboard/strategy-tips'
 import { DataSourcesPanel } from '@/components/dashboard/data-sources-panel'
-import { useMarketData, useTreasuryAuctions } from '@/hooks/use-market-data'
+import { useMarketData, useTreasuryAuctions, useCPIData } from '@/hooks/use-market-data'
 import {
   getFedStatements,
   getCPIData,
   THRESHOLDS
 } from '@/lib/market-data'
+import type { CPIData } from '@/lib/market-data'
 import { Spinner } from '@/components/ui/spinner'
 import { AlertCircle, RefreshCw, Wifi, WifiOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -32,8 +33,18 @@ export default function MacroMonitorDashboard() {
   }, [])
   const { data: marketData, isLoading, isError, refresh, isLive } = useMarketData()
   const { data: auctionData, isLoading: auctionsLoading } = useTreasuryAuctions()
+  const { data: cpiDataLive, isLoading: cpiLoading, isLive: cpiIsLive } = useCPIData()
   const fedStatements = getFedStatements()
-  const cpiData = getCPIData()
+  
+  // 使用实时CPI数据或备用数据
+  const fallbackCPI = getCPIData()
+  const cpiData: CPIData = cpiDataLive ? {
+    headline: cpiDataLive.headline ?? fallbackCPI.headline,
+    core: cpiDataLive.core ?? fallbackCPI.core,
+    coreMonthly: cpiDataLive.coreMonthly ?? fallbackCPI.coreMonthly,
+    date: cpiDataLive.date || fallbackCPI.date,
+    status: cpiDataLive.status || fallbackCPI.status
+  } : fallbackCPI
 
   // 转换API数据为组件格式
   const formatIndicator = (
@@ -242,7 +253,12 @@ export default function MacroMonitorDashboard() {
           </div>
           
           <div className="grid gap-4 lg:grid-cols-2">
-            <CPICard data={cpiData} />
+            <CPICard 
+              data={cpiData} 
+              nextReleaseDate={cpiDataLive?.nextReleaseDate}
+              isLoading={cpiLoading}
+              isLive={cpiIsLive}
+            />
             
             {/* 市场情绪总结 */}
             <div className="p-6 rounded-xl bg-card border border-border">
