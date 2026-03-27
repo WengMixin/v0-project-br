@@ -116,22 +116,24 @@ export async function GET() {
     })
   }
 
-  // Test Financial Modeling Prep API
+  // Test Financial Modeling Prep API - 使用Treasury Rates端点
   const fmpKey = process.env.FMP_API_KEY
   if (fmpKey) {
     const start = Date.now()
     try {
+      // 使用FMP的stable Treasury Rates API
       const res = await fetch(
-        `https://financialmodelingprep.com/api/v3/quote/^TNX?apikey=${fmpKey}`
+        `https://financialmodelingprep.com/stable/treasury-rates?apikey=${fmpKey}`
       )
       const latency = Date.now() - start
       if (res.ok) {
         const data = await res.json()
         if (Array.isArray(data) && data.length > 0) {
+          const latestData = data[0]
           results.push({
             name: 'Financial Modeling Prep',
             status: 'connected',
-            message: `连接成功，10Y收益率: ${data[0]?.price || 'N/A'}%`,
+            message: `连接成功，10Y国债收益率: ${latestData.year10}% (${latestData.date})`,
             latency
           })
         } else if (data['Error Message']) {
@@ -144,8 +146,8 @@ export async function GET() {
         } else {
           results.push({
             name: 'Financial Modeling Prep',
-            status: 'connected',
-            message: '连接成功',
+            status: 'error',
+            message: '响应格式异常',
             latency
           })
         }

@@ -49,6 +49,38 @@ async function fetchYahooFinance(symbols: string[]): Promise<YahooFinanceRespons
   throw new Error('All endpoints failed')
 }
 
+// FMP Treasury Rates API - 获取国债收益率
+interface FMPTreasuryRate {
+  date: string
+  month1: number
+  month2: number
+  month3: number
+  month6: number
+  year1: number
+  year2: number
+  year3: number
+  year5: number
+  year7: number
+  year10: number
+  year20: number
+  year30: number
+}
+
+async function fetchFMPTreasuryRates(apiKey: string): Promise<FMPTreasuryRate | null> {
+  try {
+    const response = await fetch(
+      `https://financialmodelingprep.com/stable/treasury-rates?apikey=${apiKey}`,
+      { next: { revalidate: 60 } }
+    )
+    if (!response.ok) return null
+    
+    const data = await response.json()
+    return Array.isArray(data) && data.length > 0 ? data[0] : null
+  } catch {
+    return null
+  }
+}
+
 // 备用: 使用 Financial Modeling Prep 免费API
 async function fetchFMPData(symbol: string, apiKey?: string): Promise<{
   price: number
@@ -111,25 +143,56 @@ export async function GET() {
       }
     } catch (yahooError) {
       console.error('Yahoo Finance error:', yahooError)
+    }
+    
+    // 优先使用FMP Treasury Rates API获取国债收益率数据
+    const fmpApiKey = process.env.FMP_API_KEY
+    if (fmpApiKey) {
+      try {
+        const treasuryData = await fetchFMPTreasuryRates(fmpApiKey)
+        if (treasuryData) {
+          // 使用FMP数据覆盖国债收益率
+          marketData.us10y = {
+            value: treasuryData.year10,
+            change: 0, // FMP不提供变动数据，需要另外计算
+            changePercent: 0,
+            lastUpdate: treasuryData.date
+          }
+          
+          // 可以额外提供其他期限的国债数据
+          marketData.treasuryRates = {
+            month1: treasuryData.month1,
+            month3: treasuryData.month3,
+            month6: treasuryData.month6,
+            year1: treasuryData.year1,
+            year2: treasuryData.year2,
+            year5: treasuryData.year5,
+            year10: treasuryData.year10,
+            year30: treasuryData.year30,
+            date: treasuryData.date
+          } as unknown as typeof marketData.us10y
+        }
+      } catch (fmpError) {
+        console.error('FMP Treasury error:', fmpError)
+      }
       
-      // 使用备用数据源或返回模拟数据
-      const fmpApiKey = process.env.FMP_API_KEY
-      
-      if (fmpApiKey) {
+      // 使用FMP获取其他数据作为备用
+      if (!marketData.gold || !marketData.brent) {
         const fmpSymbols = {
-          us10y: '^TNX',
           gold: 'GCUSD',
           brent: 'BZUSD',
         }
         
         for (const [key, symbol] of Object.entries(fmpSymbols)) {
-          const data = await fetchFMPData(symbol, fmpApiKey)
-          if (data) {
-            marketData[key] = {
-              value: data.price,
-              change: data.change,
-              changePercent: data.changesPercentage,
-              lastUpdate: new Date().toISOString()
+          if (!marketData[key]) {
+            const data = await fetchFMPData(symbol, fmpApiKey)
+            if (data) {
+              marketData[key] = {
+                value: data.price,
+                change: data.change,
+                changePercent: data.changesPercentage,
+                lastUpdate: new Date().toISOString()
+              }
             }
           }
         }
