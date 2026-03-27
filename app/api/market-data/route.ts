@@ -81,6 +81,57 @@ async function fetchFMPTreasuryRates(apiKey: string): Promise<FMPTreasuryRate | 
   }
 }
 
+// FRED API - 获取布伦特原油现货价格 (DCOILBRENTEU)
+// 现货价格比期货更能反映真实供需，是美联储决策的关键参考指标
+interface FREDObservation {
+  date: string
+  value: string
+}
+
+async function fetchFREDBrentOil(apiKey: string): Promise<{
+  value: number
+  previousValue: number
+  change: number
+  changePercent: number
+  date: string
+} | null> {
+  try {
+    // 获取最近5个交易日的数据以计算变动
+    const response = await fetch(
+      `https://api.stlouisfed.org/fred/series/observations?series_id=DCOILBRENTEU&api_key=${apiKey}&file_type=json&limit=5&sort_order=desc`,
+      { next: { revalidate: 300 } } // 缓存5分钟
+    )
+    
+    if (!response.ok) return null
+    
+    const data = await response.json()
+    if (!data.observations || data.observations.length === 0) return null
+    
+    // 获取最新值和前一个值
+    const observations: FREDObservation[] = data.observations.filter(
+      (obs: FREDObservation) => obs.value !== '.'
+    )
+    
+    if (observations.length === 0) return null
+    
+    const latestValue = parseFloat(observations[0].value)
+    const previousValue = observations.length > 1 ? parseFloat(observations[1].value) : latestValue
+    const change = latestValue - previousValue
+    const changePercent = previousValue !== 0 ? (change / previousValue) * 100 : 0
+    
+    return {
+      value: latestValue,
+      previousValue,
+      change,
+      changePercent,
+      date: observations[0].date
+    }
+  } catch (error) {
+    console.error('FRED Brent Oil fetch error:', error)
+    return null
+  }
+}
+
 // 备用: 使用 Financial Modeling Prep 免费API
 async function fetchFMPData(symbol: string, apiKey?: string): Promise<{
   price: number
@@ -145,7 +196,27 @@ export async function GET() {
       console.error('Yahoo Finance error:', yahooError)
     }
     
-    // 优先使用FMP Treasury Rates API获取国债收益率数据
+    // 优先使用FRED获取布伦特原油现货价格
+    const fredApiKey = process.env.FRED_API_KEY
+    if (fredApiKey) {
+      try {
+        const brentData = await fetchFREDBrentOil(fredApiKey)
+        if (brentData) {
+          marketData.brent = {
+            value: brentData.value,
+            change: brentData.change,
+            changePercent: brentData.changePercent,
+            lastUpdate: brentData.date
+          }
+          // 标记为现货数据
+          marketData.brentSpot = true as unknown as typeof marketData.brent
+        }
+      } catch (fredError) {
+        console.error('FRED Brent error:', fredError)
+      }
+    }
+    
+    // 使用FMP Treasury Rates API获取国债收益率数据
     const fmpApiKey = process.env.FMP_API_KEY
     if (fmpApiKey) {
       try {

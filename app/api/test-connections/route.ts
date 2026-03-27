@@ -24,11 +24,27 @@ export async function GET() {
         const data = await res.json()
         if (data.observations && data.observations.length > 0) {
           const obs = data.observations[0]
-          const value = parseFloat(obs.value).toFixed(2)
+          const cpiValue = parseFloat(obs.value).toFixed(2)
+          
+          // 同时测试布伦特原油现货价格
+          const brentRes = await fetch(
+            `https://api.stlouisfed.org/fred/series/observations?series_id=DCOILBRENTEU&api_key=${fredKey}&file_type=json&limit=1&sort_order=desc`
+          )
+          let brentMsg = ''
+          if (brentRes.ok) {
+            const brentData = await brentRes.json()
+            if (brentData.observations && brentData.observations.length > 0) {
+              const brentObs = brentData.observations[0]
+              if (brentObs.value !== '.') {
+                brentMsg = `，布伦特原油现货: $${parseFloat(brentObs.value).toFixed(2)}/桶 (${brentObs.date})`
+              }
+            }
+          }
+          
           results.push({
             name: 'FRED API',
             status: 'connected',
-            message: `连接成功，核心CPI同比: ${value}% (${obs.date})`,
+            message: `连接成功，核心CPI同比: ${cpiValue}%${brentMsg}`,
             latency
           })
         } else {
