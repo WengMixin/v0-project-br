@@ -3,16 +3,29 @@
 import { Badge } from '@/components/ui/badge'
 import { Activity, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 export function DashboardHeader() {
-  const [lastUpdate, setLastUpdate] = useState(new Date())
+  const [lastUpdate, setLastUpdate] = useState<string | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  
+  // 在客户端挂载后才设置时间，避免水合不匹配
+  useEffect(() => {
+    setLastUpdate(new Date().toLocaleTimeString('zh-CN', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      second: '2-digit'
+    }))
+  }, [])
   
   const handleRefresh = () => {
     setIsRefreshing(true)
     setTimeout(() => {
-      setLastUpdate(new Date())
+      setLastUpdate(new Date().toLocaleTimeString('zh-CN', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        second: '2-digit'
+      }))
       setIsRefreshing(false)
     }, 1000)
   }
@@ -42,11 +55,7 @@ export function DashboardHeader() {
             <div className="text-right hidden md:block">
               <div className="text-xs text-muted-foreground">最后更新</div>
               <div className="text-sm font-medium tabular-nums">
-                {lastUpdate.toLocaleTimeString('zh-CN', { 
-                  hour: '2-digit', 
-                  minute: '2-digit',
-                  second: '2-digit'
-                })}
+                {lastUpdate || '--:--:--'}
               </div>
             </div>
             

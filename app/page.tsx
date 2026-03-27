@@ -6,29 +6,134 @@ import { TreasuryAuctionCard } from '@/components/dashboard/treasury-auction-car
 import { FedStatementsCard } from '@/components/dashboard/fed-statements-card'
 import { CPICard } from '@/components/dashboard/cpi-card'
 import { StrategyTips } from '@/components/dashboard/strategy-tips'
+import { DataSourcesPanel } from '@/components/dashboard/data-sources-panel'
+import { useMarketData, useTreasuryAuctions } from '@/hooks/use-market-data'
 import {
-  getMarketData,
-  getTreasuryAuctions,
   getFedStatements,
   getCPIData,
-  getUS10YHistory,
-  getDXYHistory,
-  getBrentHistory,
-  getGoldHistory,
   THRESHOLDS
 } from '@/lib/market-data'
+import { Spinner } from '@/components/ui/spinner'
+import { AlertCircle, RefreshCw, Wifi, WifiOff } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 
 export default function MacroMonitorDashboard() {
-  const marketData = getMarketData()
-  const treasuryAuctions = getTreasuryAuctions()
+  const { data: marketData, isLoading, isError, refresh, isLive } = useMarketData()
+  const { data: auctionData, isLoading: auctionsLoading } = useTreasuryAuctions()
   const fedStatements = getFedStatements()
   const cpiData = getCPIData()
+
+  // 转换API数据为组件格式
+  const formatIndicator = (
+    name: string,
+    data: { value: number; change: number; changePercent: number; lastUpdate: string } | undefined,
+    thresholds?: { warning?: number; danger?: number }
+  ) => {
+    if (!data) {
+      return {
+        name,
+        value: 0,
+        change: 0,
+        changePercent: 0,
+        status: 'neutral' as const,
+        lastUpdate: new Date()
+      }
+    }
+
+    let status: 'bullish' | 'bearish' | 'neutral' | 'warning' | 'danger' = 'neutral'
+    
+    if (thresholds) {
+      if (thresholds.danger && data.value >= thresholds.danger) {
+        status = 'danger'
+      } else if (thresholds.warning && data.value >= thresholds.warning) {
+        status = 'warning'
+      } else if (data.changePercent > 0.5) {
+        status = 'bullish'
+      } else if (data.changePercent < -0.5) {
+        status = 'bearish'
+      }
+    } else {
+      if (data.changePercent > 0.5) status = 'bullish'
+      else if (data.changePercent < -0.5) status = 'bearish'
+    }
+
+    return {
+      name,
+      value: data.value,
+      change: data.change,
+      changePercent: data.changePercent,
+      status,
+      lastUpdate: new Date(data.lastUpdate)
+    }
+  }
+
+  // 生成简单的历史数据模拟（基于当前值）
+  const generateChartData = (currentValue: number, volatility: number = 0.02) => {
+    const data = []
+    let value = currentValue * (1 - volatility * 3)
+    
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date()
+      date.setDate(date.getDate() - i)
+      const dateStr = `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+      
+      value = value + (Math.random() - 0.4) * currentValue * volatility
+      data.push({ date: dateStr, value: Number(value.toFixed(2)) })
+    }
+    
+    // 确保最后一个值是当前值
+    if (data.length > 0) {
+      data[data.length - 1].value = currentValue
+    }
+    
+    return data
+  }
 
   return (
     <div className="min-h-screen bg-background">
       <DashboardHeader />
       
       <main className="container mx-auto px-4 py-6">
+        {/* 数据状态指示器 */}
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {isLive ? (
+              <div className="flex items-center gap-1.5 text-xs text-success">
+                <Wifi className="size-3.5" />
+                <span>实时数据</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 text-xs text-warning">
+                <WifiOff className="size-3.5" />
+                <span>备用数据</span>
+              </div>
+            )}
+            {marketData?.timestamp && (
+              <span className="text-xs text-muted-foreground">
+                更新于 {new Date(marketData.timestamp).toLocaleTimeString('zh-CN')}
+              </span>
+            )}
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => refresh()}
+            disabled={isLoading}
+            className="h-7 text-xs"
+          >
+            <RefreshCw className={`size-3.5 mr-1.5 ${isLoading ? 'animate-spin' : ''}`} />
+            刷新数据
+          </Button>
+        </div>
+
+        {/* 错误提示 */}
+        {isError && (
+          <div className="mb-4 p-3 rounded-lg bg-danger/10 border border-danger/20 flex items-center gap-2 text-sm text-danger">
+            <AlertCircle className="size-4" />
+            <span>数据获取失败，显示备用数据</span>
+          </div>
+        )}
+
         {/* Section 1: 核心指标 */}
         <section className="mb-8">
           <div className="flex items-center gap-2 mb-4">
@@ -36,52 +141,83 @@ export default function MacroMonitorDashboard() {
             <span className="text-xs text-muted-foreground">盯死美国的钱袋子</span>
           </div>
           
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <IndicatorCard
-              indicator={marketData.us10y}
-              unit="%"
-              thresholds={{
-                warning: THRESHOLDS.us10y.warning,
-                danger: THRESHOLDS.us10y.danger
-              }}
-              chartData={getUS10YHistory()}
-              description="突破4.5%进入警戒区，科技股和新能源继续杀估值"
-            />
-            
-            <IndicatorCard
-              indicator={marketData.dxy}
-              unit=""
-              thresholds={{
-                warning: THRESHOLDS.dxy.high
-              }}
-              chartData={getDXYHistory()}
-              description="突破105说明全球极度缺钱，港股持续承压"
-            />
-            
-            <IndicatorCard
-              indicator={marketData.brent}
-              unit="$/桶"
-              thresholds={{
-                warning: THRESHOLDS.brent.high,
-                danger: THRESHOLDS.brent.veryHigh
-              }}
-              chartData={getBrentHistory()}
-              description="油价高企，中海油底仓坚决不动"
-            />
-            
-            <IndicatorCard
-              indicator={marketData.gold}
-              unit="$/盎司"
-              chartData={getGoldHistory()}
-              description="美债拍卖流拍或美联储软化，黄金直接起飞"
-            />
-          </div>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Spinner className="size-8" />
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <IndicatorCard
+                indicator={formatIndicator(
+                  '美国10年期国债收益率',
+                  marketData?.us10y,
+                  { warning: THRESHOLDS.us10y.warning, danger: THRESHOLDS.us10y.danger }
+                )}
+                unit="%"
+                thresholds={{
+                  warning: THRESHOLDS.us10y.warning,
+                  danger: THRESHOLDS.us10y.danger
+                }}
+                chartData={generateChartData(marketData?.us10y?.value || 4.39, 0.01)}
+                description="突破4.5%进入警戒区，科技股和新能源继续杀估值"
+              />
+              
+              <IndicatorCard
+                indicator={formatIndicator(
+                  '美元指数',
+                  marketData?.dxy,
+                  { warning: THRESHOLDS.dxy.high }
+                )}
+                unit=""
+                thresholds={{
+                  warning: THRESHOLDS.dxy.high
+                }}
+                chartData={generateChartData(marketData?.dxy?.value || 104.25, 0.005)}
+                description="突破105说明全球极度缺钱，港股持续承压"
+              />
+              
+              <IndicatorCard
+                indicator={formatIndicator(
+                  '布伦特原油',
+                  marketData?.brent,
+                  { warning: THRESHOLDS.brent.high, danger: THRESHOLDS.brent.veryHigh }
+                )}
+                unit="$/桶"
+                thresholds={{
+                  warning: THRESHOLDS.brent.high,
+                  danger: THRESHOLDS.brent.veryHigh
+                }}
+                chartData={generateChartData(marketData?.brent?.value || 73.5, 0.02)}
+                description="油价高企，中海油底仓坚决不动"
+              />
+              
+              <IndicatorCard
+                indicator={formatIndicator(
+                  '国际黄金',
+                  marketData?.gold
+                )}
+                unit="$/盎司"
+                chartData={generateChartData(marketData?.gold?.value || 3010, 0.008)}
+                description="美债拍卖流拍或美联储软化，黄金直接起飞"
+              />
+            </div>
+          )}
         </section>
         
         {/* Section 2: 国债拍卖 + 美联储口风 */}
         <section className="mb-8">
           <div className="grid gap-4 lg:grid-cols-2">
-            <TreasuryAuctionCard auctions={treasuryAuctions} />
+            <TreasuryAuctionCard 
+              auctions={auctionData?.auctions?.map(a => ({
+                date: a.date,
+                type: a.type,
+                bidToCover: a.bidToCover || 0,
+                tail: a.rate ? (a.rate * 100 - Math.floor(a.rate * 100)) * 10 : 0,
+                status: a.status
+              })) || []}
+              isLoading={auctionsLoading}
+              isLive={auctionData?.source !== 'fallback'}
+            />
             <FedStatementsCard statements={fedStatements} />
           </div>
         </section>
@@ -106,7 +242,10 @@ export default function MacroMonitorDashboard() {
                   <div>
                     <div className="font-medium text-sm">利率环境</div>
                     <p className="text-xs text-muted-foreground leading-relaxed">
-                      10Y收益率 {marketData.us10y.value}% 处于警戒区间附近，
+                      10Y收益率 {marketData?.us10y?.value?.toFixed(2) || '--'}% 
+                      {marketData?.us10y?.value && marketData.us10y.value >= 4.5 
+                        ? '处于警戒区间' 
+                        : '处于观察区间'}，
                       市场预期美联储将维持 Higher for longer 立场。
                     </p>
                   </div>
@@ -117,8 +256,8 @@ export default function MacroMonitorDashboard() {
                   <div>
                     <div className="font-medium text-sm">大宗商品</div>
                     <p className="text-xs text-muted-foreground leading-relaxed">
-                      原油 ${marketData.brent.value}/桶 维持高位震荡，
-                      黄金 ${marketData.gold.value.toFixed(0)}/盎司 受益于避险情绪。
+                      原油 ${marketData?.brent?.value?.toFixed(2) || '--'}/桶 维持震荡，
+                      黄金 ${marketData?.gold?.value?.toFixed(0) || '--'}/盎司 受益于避险情绪。
                     </p>
                   </div>
                 </div>
@@ -128,8 +267,11 @@ export default function MacroMonitorDashboard() {
                   <div>
                     <div className="font-medium text-sm">美元流动性</div>
                     <p className="text-xs text-muted-foreground leading-relaxed">
-                      美元指数 {marketData.dxy.value} 处于中性区间，
-                      全球流动性暂未出现极端紧缩信号。
+                      美元指数 {marketData?.dxy?.value?.toFixed(2) || '--'} 
+                      {marketData?.dxy?.value && marketData.dxy.value >= 105 
+                        ? '处于紧缩信号区' 
+                        : '处于中性区间'}，
+                      全球流动性暂未出现极端信号。
                     </p>
                   </div>
                 </div>
@@ -139,8 +281,9 @@ export default function MacroMonitorDashboard() {
                   <div>
                     <div className="font-medium text-sm">通胀压力</div>
                     <p className="text-xs text-muted-foreground leading-relaxed">
-                      核心CPI环比 {cpiData.coreMonthly}% 超过 0.3% 警戒线，
-                      通胀黏性依然存在，美联储短期难以转向。
+                      核心CPI环比 {cpiData.coreMonthly}% 
+                      {cpiData.coreMonthly >= 0.3 ? '超过警戒线' : '处于可控范围'}，
+                      {cpiData.coreMonthly >= 0.4 ? '通胀黏性严重，美联储短期难以转向' : '关注后续数据变化'}。
                     </p>
                   </div>
                 </div>
@@ -160,6 +303,11 @@ export default function MacroMonitorDashboard() {
         {/* Section 4: 策略速查 */}
         <section className="mb-8">
           <StrategyTips />
+        </section>
+
+        {/* Section 5: 数据源配置 */}
+        <section className="mb-8">
+          <DataSourcesPanel />
         </section>
         
         {/* Footer */}

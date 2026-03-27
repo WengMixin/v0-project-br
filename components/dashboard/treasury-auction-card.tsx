@@ -2,16 +2,19 @@
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Gavel, AlertTriangle, CheckCircle, XCircle } from 'lucide-react'
+import { Gavel, AlertTriangle, CheckCircle, XCircle, Wifi, WifiOff } from 'lucide-react'
+import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
 import type { TreasuryAuction } from '@/lib/market-data'
 import { THRESHOLDS } from '@/lib/market-data'
 
 interface TreasuryAuctionCardProps {
   auctions: TreasuryAuction[]
+  isLoading?: boolean
+  isLive?: boolean
 }
 
-export function TreasuryAuctionCard({ auctions }: TreasuryAuctionCardProps) {
+export function TreasuryAuctionCard({ auctions, isLoading, isLive }: TreasuryAuctionCardProps) {
   const getStatusIcon = (status: TreasuryAuction['status']) => {
     switch (status) {
       case 'danger':
@@ -49,12 +52,34 @@ export function TreasuryAuctionCard({ auctions }: TreasuryAuctionCardProps) {
           </div>
           <div>
             <CardTitle className="text-base">国债拍卖监控</CardTitle>
-            <CardDescription>关注投标倍数与尾部利差</CardDescription>
+            <CardDescription className="flex items-center gap-2">
+              关注投标倍数与尾部利差
+              {isLive !== undefined && (
+                isLive ? (
+                  <span className="flex items-center gap-1 text-success">
+                    <Wifi className="size-3" /> 实时
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 text-warning">
+                    <WifiOff className="size-3" /> 备用
+                  </span>
+                )
+              )}
+            </CardDescription>
           </div>
         </div>
       </CardHeader>
       
       <CardContent>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <Spinner className="size-6" />
+          </div>
+        ) : auctions.length === 0 ? (
+          <div className="text-center py-8 text-sm text-muted-foreground">
+            暂无拍卖数据
+          </div>
+        ) : (
         <div className="space-y-4">
           {auctions.map((auction, index) => (
             <div
@@ -93,6 +118,7 @@ export function TreasuryAuctionCard({ auctions }: TreasuryAuctionCardProps) {
             </div>
           ))}
         </div>
+        )}
         
         <div className="mt-4 p-3 rounded-lg bg-accent/50 border border-border">
           <div className="flex items-start gap-2">
