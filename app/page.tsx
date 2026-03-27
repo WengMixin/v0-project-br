@@ -32,8 +32,31 @@ export default function MacroMonitorDashboard() {
     }))
   }, [])
   const { data: marketData, isLoading, isError, refresh, isLive } = useMarketData()
-  const { data: auctionData, isLoading: auctionsLoading } = useTreasuryAuctions()
-  const { data: cpiDataLive, isLoading: cpiLoading, isLive: cpiIsLive } = useCPIData()
+  const { data: auctionData, isLoading: auctionsLoading, refresh: refreshAuctions } = useTreasuryAuctions()
+  const { data: cpiDataLive, isLoading: cpiLoading, isLive: cpiIsLive, refresh: refreshCPI } = useCPIData()
+  
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  
+  // 统一刷新所有数据
+  const handleRefreshAll = async () => {
+    setIsRefreshing(true)
+    try {
+      await Promise.all([
+        refresh(),
+        refreshAuctions(),
+        refreshCPI()
+      ])
+      setLastUpdateTime(new Date().toLocaleDateString('zh-CN', { 
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      }))
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
   const fedStatements = getFedStatements()
   
   // 使用实时CPI数据或备用数据
@@ -114,7 +137,7 @@ export default function MacroMonitorDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      <DashboardHeader />
+      <DashboardHeader onRefresh={handleRefreshAll} isRefreshing={isRefreshing} />
       
       <main className="container mx-auto px-4 py-6">
         {/* 数据状态指示器 */}

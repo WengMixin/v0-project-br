@@ -49,6 +49,53 @@ async function fetchYahooFinance(symbols: string[]): Promise<YahooFinanceRespons
   throw new Error('All endpoints failed')
 }
 
+// Alpha Vantage - 黄金备用数据源
+// 当GoldAPI配额用完时使用
+interface AlphaVantageExchangeRate {
+  'Realtime Currency Exchange Rate': {
+    '1. From_Currency Code': string
+    '2. From_Currency Name': string
+    '3. To_Currency Code': string
+    '4. To_Currency Name': string
+    '5. Exchange Rate': string
+    '6. Last Refreshed': string
+    '7. Time Zone': string
+    '8. Bid Price': string
+    '9. Ask Price': string
+  }
+}
+
+async function fetchAlphaVantageGold(apiKey: string): Promise<{
+  price: number
+  bidPrice: number
+  askPrice: number
+  lastRefreshed: string
+} | null> {
+  try {
+    const response = await fetch(
+      `https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency=XAU&to_currency=USD&apikey=${apiKey}`,
+      { next: { revalidate: 300 } } // 缓存5分钟
+    )
+    
+    if (!response.ok) return null
+    
+    const data: AlphaVantageExchangeRate = await response.json()
+    const rateData = data['Realtime Currency Exchange Rate']
+    
+    if (!rateData) return null
+    
+    return {
+      price: parseFloat(rateData['5. Exchange Rate']),
+      bidPrice: parseFloat(rateData['8. Bid Price']),
+      askPrice: parseFloat(rateData['9. Ask Price']),
+      lastRefreshed: rateData['6. Last Refreshed']
+    }
+  } catch (error) {
+    console.error('Alpha Vantage Gold fetch error:', error)
+    return null
+  }
+}
+
 // GoldAPI - 获取黄金现货价格
 // 文档: https://www.goldapi.io/
 interface GoldAPIResponse {
@@ -251,9 +298,24 @@ export async function GET() {
       console.error('Yahoo Finance error:', yahooError)
     }
     
-    // 优先使用GoldAPI获取黄金现货价格
+    // 智能刷新逻辑：黄金价格
+    // GoldAPI每月100次限制，只在定时时间点使用(早8点、下午1点、晚8点)
+    // 其他时间使用Alpha Vantage作为备用
     const goldApiKey = process.env.GOLDAPI_KEY
-    if (goldApiKey) {
+    const alphaVantageKey = process.env.ALPHA_VANTAGE_API_KEY
+    const now = new Date()
+    const currentHour = now.getHours()
+    const goldScheduleHours = [8, 13, 20] // 定时刷新时间点
+    
+    // 判断是否在GoldAPI定时刷新时间点（前后1小时内）
+    const isGoldAPIScheduledTime = goldScheduleHours.some(h => 
+      Math.abs(currentHour - h) <= 1
+    )
+    
+    let goldSource = 'none'
+    
+    if (isGoldAPIScheduledTime && goldApiKey) {
+      // 定时时间点，使用GoldAPI
       try {
         const goldData = await fetchGoldAPIPrice(goldApiKey)
         if (goldData) {
@@ -263,12 +325,39 @@ export async function GET() {
             changePercent: goldData.changePercent,
             lastUpdate: goldData.timestamp
           }
-          // 标记为GoldAPI数据源
-          marketData.goldSource = 'goldapi' as unknown as typeof marketData.gold
+          goldSource = 'goldapi'
         }
       } catch (goldError) {
         console.error('GoldAPI error:', goldError)
       }
+    }
+    
+    // 如果GoldAPI没获取到，使用Alpha Vantage作为备用
+    if (goldSource === 'none' && alphaVantageKey) {
+      try {
+        const avGoldData = await fetchAlphaVantageGold(alphaVantageKey)
+        if (avGoldData) {
+          marketData.gold = {
+            value: avGoldData.price,
+            change: 0, // Alpha Vantage不提供涨跌幅
+            changePercent: 0,
+            lastUpdate: avGoldData.lastRefreshed
+          }
+          goldSource = 'alphavantage'
+        }
+      } catch (avError) {
+        console.error('Alpha Vantage Gold error:', avError)
+      }
+    }
+    
+    // 如果还是没有，用Yahoo Finance的GC=F
+    if (goldSource === 'none' && marketData.gold) {
+      goldSource = 'yahoo'
+    }
+    
+    // 标记数据源
+    if (goldSource !== 'none') {
+      marketData.goldSource = goldSource as unknown as typeof marketData.gold
     }
     
     // 优先使用FRED获取布伦特原油现货价格
