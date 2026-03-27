@@ -3,8 +3,23 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { ExternalLink, Database, Key, CheckCircle2, XCircle } from 'lucide-react'
-import { useState } from 'react'
+import { ExternalLink, Database, Key, CheckCircle2, XCircle, RefreshCw, Wifi, Clock } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Spinner } from '@/components/ui/spinner'
+
+interface ConnectionResult {
+  name: string
+  status: 'connected' | 'error' | 'not_configured'
+  message: string
+  latency?: number
+}
+
+interface TestResult {
+  success: boolean
+  summary: string
+  connections: ConnectionResult[]
+  timestamp: string
+}
 
 interface DataSource {
   name: string
@@ -15,7 +30,6 @@ interface DataSource {
   freeLimit: string
   docsUrl: string
   getKeyUrl?: string
-  status: 'connected' | 'needs-key' | 'available'
 }
 
 const dataSources: DataSource[] = [
@@ -25,8 +39,15 @@ const dataSources: DataSource[] = [
     features: ['10Y国债收益率', '美元指数', '原油期货', '黄金期货'],
     apiKeyRequired: false,
     freeLimit: '无限制（合理使用）',
-    docsUrl: 'https://finance.yahoo.com/',
-    status: 'connected'
+    docsUrl: 'https://finance.yahoo.com/'
+  },
+  {
+    name: 'Treasury Direct',
+    description: '美国财政部官方API - 国债拍卖数据',
+    features: ['国债拍卖结果', '投标倍数', '中标利率', '发行金额'],
+    apiKeyRequired: false,
+    freeLimit: '无限制',
+    docsUrl: 'https://fiscaldata.treasury.gov/api-documentation/'
   },
   {
     name: 'FRED API',
@@ -36,17 +57,7 @@ const dataSources: DataSource[] = [
     apiKeyEnvVar: 'FRED_API_KEY',
     freeLimit: '120次/分钟',
     docsUrl: 'https://fred.stlouisfed.org/docs/api/fred/',
-    getKeyUrl: 'https://fred.stlouisfed.org/docs/api/api_key.html',
-    status: 'needs-key'
-  },
-  {
-    name: 'Treasury Direct',
-    description: '美国财政部官方API - 国债拍卖数据',
-    features: ['国债拍卖结果', '投标倍数', '中标利率', '发行金额'],
-    apiKeyRequired: false,
-    freeLimit: '无限制',
-    docsUrl: 'https://fiscaldata.treasury.gov/api-documentation/',
-    status: 'connected'
+    getKeyUrl: 'https://fred.stlouisfed.org/docs/api/api_key.html'
   },
   {
     name: 'Alpha Vantage',
@@ -56,8 +67,7 @@ const dataSources: DataSource[] = [
     apiKeyEnvVar: 'ALPHA_VANTAGE_API_KEY',
     freeLimit: '25次/天',
     docsUrl: 'https://www.alphavantage.co/documentation/',
-    getKeyUrl: 'https://www.alphavantage.co/support/#api-key',
-    status: 'available'
+    getKeyUrl: 'https://www.alphavantage.co/support/#api-key'
   },
   {
     name: 'Financial Modeling Prep',
@@ -67,13 +77,42 @@ const dataSources: DataSource[] = [
     apiKeyEnvVar: 'FMP_API_KEY',
     freeLimit: '250次/天',
     docsUrl: 'https://site.financialmodelingprep.com/developer/docs',
-    getKeyUrl: 'https://site.financialmodelingprep.com/developer/docs',
-    status: 'available'
+    getKeyUrl: 'https://site.financialmodelingprep.com/developer/docs'
   }
 ]
 
 export function DataSourcesPanel() {
   const [isExpanded, setIsExpanded] = useState(false)
+  const [testResult, setTestResult] = useState<TestResult | null>(null)
+  const [isTesting, setIsTesting] = useState(false)
+
+  const testConnections = async () => {
+    setIsTesting(true)
+    try {
+      const res = await fetch('/api/test-connections')
+      if (res.ok) {
+        const data = await res.json()
+        setTestResult(data)
+      }
+    } catch (error) {
+      console.error('Connection test failed:', error)
+    } finally {
+      setIsTesting(false)
+    }
+  }
+
+  useEffect(() => {
+    // Auto-test connections on mount
+    testConnections()
+  }, [])
+
+  const getConnectionStatus = (sourceName: string) => {
+    if (!testResult) return null
+    return testResult.connections.find(c => c.name === sourceName)
+  }
+
+  const connectedCount = testResult?.connections.filter(c => c.status === 'connected').length || 0
+  const totalCount = testResult?.connections.length || 0
 
   return (
     <Card>
@@ -82,14 +121,41 @@ export function DataSourcesPanel() {
           <div className="flex items-center gap-2">
             <Database className="size-5 text-primary" />
             <CardTitle className="text-base">数据源配置</CardTitle>
+            {testResult && (
+              <Badge 
+                variant="outline" 
+                className={connectedCount === totalCount 
+                  ? "text-success border-success/30 bg-success/10" 
+                  : "text-warning border-warning/30 bg-warning/10"
+                }
+              >
+                <Wifi className="size-3 mr-1" />
+                {connectedCount}/{totalCount} 已连接
+              </Badge>
+            )}
           </div>
-          <Button 
-            variant="ghost" 
-            size="sm"
-            onClick={() => setIsExpanded(!isExpanded)}
-          >
-            {isExpanded ? '收起' : '展开详情'}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={testConnections}
+              disabled={isTesting}
+            >
+              {isTesting ? (
+                <Spinner className="size-4 mr-1" />
+              ) : (
+                <RefreshCw className="size-4 mr-1" />
+              )}
+              测试连接
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => setIsExpanded(!isExpanded)}
+            >
+              {isExpanded ? '收起' : '展开详情'}
+            </Button>
+          </div>
         </div>
         <p className="text-xs text-muted-foreground mt-1">
           配置免费API获取实时金融数据。部分数据源需要API Key。
@@ -98,78 +164,139 @@ export function DataSourcesPanel() {
       
       {isExpanded && (
         <CardContent>
-          <div className="space-y-4">
-            {dataSources.map((source) => (
-              <div 
-                key={source.name}
-                className="p-4 rounded-lg border border-border bg-secondary/30"
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-medium text-sm">{source.name}</h4>
-                    {source.status === 'connected' ? (
-                      <Badge variant="outline" className="text-success border-success/30 bg-success/10">
-                        <CheckCircle2 className="size-3 mr-1" />
-                        已连接
-                      </Badge>
-                    ) : source.status === 'needs-key' ? (
-                      <Badge variant="outline" className="text-warning border-warning/30 bg-warning/10">
-                        <Key className="size-3 mr-1" />
-                        需要配置
-                      </Badge>
+          {/* Connection Status Summary */}
+          {testResult && (
+            <div className="mb-4 p-3 rounded-lg bg-secondary/50 border border-border">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium">连接状态摘要</span>
+                <span className="text-xs text-muted-foreground">
+                  {new Date(testResult.timestamp).toLocaleString('zh-CN')}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                {testResult.connections.map((conn) => (
+                  <div 
+                    key={conn.name}
+                    className={`p-2 rounded text-xs flex items-center gap-2 ${
+                      conn.status === 'connected' 
+                        ? 'bg-success/10 text-success' 
+                        : conn.status === 'error'
+                        ? 'bg-danger/10 text-danger'
+                        : 'bg-warning/10 text-warning'
+                    }`}
+                  >
+                    {conn.status === 'connected' ? (
+                      <CheckCircle2 className="size-3.5 shrink-0" />
                     ) : (
-                      <Badge variant="outline" className="text-muted-foreground">
-                        可用
-                      </Badge>
+                      <XCircle className="size-3.5 shrink-0" />
+                    )}
+                    <span className="truncate">{conn.name}</span>
+                    {conn.latency && (
+                      <span className="ml-auto text-muted-foreground flex items-center gap-0.5">
+                        <Clock className="size-2.5" />
+                        {conn.latency}ms
+                      </span>
                     )}
                   </div>
-                  <a 
-                    href={source.docsUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-primary hover:underline flex items-center gap-1"
-                  >
-                    文档 <ExternalLink className="size-3" />
-                  </a>
-                </div>
-                
-                <p className="text-xs text-muted-foreground mb-2">
-                  {source.description}
-                </p>
-                
-                <div className="flex flex-wrap gap-1.5 mb-3">
-                  {source.features.map((feature) => (
-                    <Badge key={feature} variant="secondary" className="text-xs">
-                      {feature}
-                    </Badge>
-                  ))}
-                </div>
-                
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">
-                    免费额度: {source.freeLimit}
-                  </span>
-                  
-                  {source.apiKeyRequired && source.getKeyUrl && (
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            {dataSources.map((source) => {
+              const connection = getConnectionStatus(source.name)
+              const status = connection?.status || 'not_configured'
+              
+              return (
+                <div 
+                  key={source.name}
+                  className="p-4 rounded-lg border border-border bg-secondary/30"
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-medium text-sm">{source.name}</h4>
+                      {status === 'connected' ? (
+                        <Badge variant="outline" className="text-success border-success/30 bg-success/10">
+                          <CheckCircle2 className="size-3 mr-1" />
+                          已连接
+                        </Badge>
+                      ) : status === 'error' ? (
+                        <Badge variant="outline" className="text-danger border-danger/30 bg-danger/10">
+                          <XCircle className="size-3 mr-1" />
+                          错误
+                        </Badge>
+                      ) : source.apiKeyRequired ? (
+                        <Badge variant="outline" className="text-warning border-warning/30 bg-warning/10">
+                          <Key className="size-3 mr-1" />
+                          需要配置
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-muted-foreground">
+                          检测中...
+                        </Badge>
+                      )}
+                    </div>
                     <a 
-                      href={source.getKeyUrl}
+                      href={source.docsUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-primary hover:underline flex items-center gap-1"
+                      className="text-xs text-primary hover:underline flex items-center gap-1"
                     >
-                      获取免费API Key <ExternalLink className="size-3" />
+                      文档 <ExternalLink className="size-3" />
                     </a>
+                  </div>
+                  
+                  {connection?.message && (
+                    <p className={`text-xs mb-2 ${
+                      status === 'connected' ? 'text-success' : 
+                      status === 'error' ? 'text-danger' : 'text-muted-foreground'
+                    }`}>
+                      {connection.message}
+                    </p>
+                  )}
+                  
+                  <p className="text-xs text-muted-foreground mb-2">
+                    {source.description}
+                  </p>
+                  
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    {source.features.map((feature) => (
+                      <Badge key={feature} variant="secondary" className="text-xs">
+                        {feature}
+                      </Badge>
+                    ))}
+                  </div>
+                  
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">
+                      免费额度: {source.freeLimit}
+                    </span>
+                    
+                    {source.apiKeyRequired && source.getKeyUrl && (
+                      <a 
+                        href={source.getKeyUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline flex items-center gap-1"
+                      >
+                        获取免费API Key <ExternalLink className="size-3" />
+                      </a>
+                    )}
+                  </div>
+                  
+                  {source.apiKeyRequired && source.apiKeyEnvVar && (
+                    <div className="mt-3 p-2 rounded bg-muted/50 text-xs">
+                      <span className="text-muted-foreground">环境变量: </span>
+                      <code className="font-mono text-primary">{source.apiKeyEnvVar}</code>
+                      {status === 'connected' && (
+                        <CheckCircle2 className="size-3 text-success inline ml-2" />
+                      )}
+                    </div>
                   )}
                 </div>
-                
-                {source.apiKeyRequired && source.apiKeyEnvVar && (
-                  <div className="mt-3 p-2 rounded bg-muted/50 text-xs">
-                    <span className="text-muted-foreground">环境变量: </span>
-                    <code className="font-mono text-primary">{source.apiKeyEnvVar}</code>
-                  </div>
-                )}
-              </div>
-            ))}
+              )
+            })}
           </div>
           
           <div className="mt-6 p-4 rounded-lg bg-primary/5 border border-primary/20">
@@ -178,7 +305,7 @@ export function DataSourcesPanel() {
               <li>点击上方数据源的「获取免费API Key」链接注册</li>
               <li>复制获得的 API Key</li>
               <li>在 v0 设置中添加环境变量（点击右上角设置图标 → Vars）</li>
-              <li>刷新页面即可使用实时数据</li>
+              <li>点击「测试连接」按钮验证配置</li>
             </ol>
           </div>
         </CardContent>

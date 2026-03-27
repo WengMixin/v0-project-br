@@ -16,8 +16,20 @@ import {
 import { Spinner } from '@/components/ui/spinner'
 import { AlertCircle, RefreshCw, Wifi, WifiOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useState, useEffect } from 'react'
 
 export default function MacroMonitorDashboard() {
+  const [lastUpdateTime, setLastUpdateTime] = useState<string | null>(null)
+  
+  useEffect(() => {
+    setLastUpdateTime(new Date().toLocaleDateString('zh-CN', { 
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    }))
+  }, [])
   const { data: marketData, isLoading, isError, refresh, isLive } = useMarketData()
   const { data: auctionData, isLoading: auctionsLoading } = useTreasuryAuctions()
   const fedStatements = getFedStatements()
@@ -314,13 +326,7 @@ export default function MacroMonitorDashboard() {
         <footer className="text-center py-6 text-xs text-muted-foreground border-t border-border">
           <p>数据仅供参考，不构成投资建议 · 投资有风险，入市需谨慎</p>
           <p className="mt-1">
-            最后更新: {new Date().toLocaleDateString('zh-CN', { 
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit'
-            })}
+            最后更新: {lastUpdateTime || '--'}
           </p>
         </footer>
       </main>
