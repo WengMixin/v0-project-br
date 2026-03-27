@@ -49,6 +49,61 @@ async function fetchYahooFinance(symbols: string[]): Promise<YahooFinanceRespons
   throw new Error('All endpoints failed')
 }
 
+// GoldAPI - 获取黄金现货价格
+// 文档: https://www.goldapi.io/
+interface GoldAPIResponse {
+  timestamp: number
+  metal: string
+  currency: string
+  exchange: string
+  symbol: string
+  prev_close_price: number
+  open_price: number
+  low_price: number
+  high_price: number
+  open_time: number
+  price: number
+  ch: number
+  chp: number
+  ask: number
+  bid: number
+}
+
+async function fetchGoldAPIPrice(apiKey: string): Promise<{
+  price: number
+  change: number
+  changePercent: number
+  high: number
+  low: number
+  timestamp: string
+} | null> {
+  try {
+    const response = await fetch('https://www.goldapi.io/api/XAU/USD', {
+      headers: {
+        'x-access-token': apiKey,
+        'Content-Type': 'application/json'
+      },
+      next: { revalidate: 60 } // 缓存60秒
+    })
+    
+    if (!response.ok) return null
+    
+    const data: GoldAPIResponse = await response.json()
+    
+    return {
+      price: data.price,
+      change: data.ch,
+      changePercent: data.chp,
+      high: data.high_price,
+      low: data.low_price,
+      timestamp: new Date(data.timestamp * 1000).toISOString()
+    }
+  } catch (error) {
+    console.error('GoldAPI fetch error:', error)
+    return null
+  }
+}
+
 // FMP Treasury Rates API - 获取国债收益率
 interface FMPTreasuryRate {
   date: string
@@ -194,6 +249,26 @@ export async function GET() {
       }
     } catch (yahooError) {
       console.error('Yahoo Finance error:', yahooError)
+    }
+    
+    // 优先使用GoldAPI获取黄金现货价格
+    const goldApiKey = process.env.GOLDAPI_KEY
+    if (goldApiKey) {
+      try {
+        const goldData = await fetchGoldAPIPrice(goldApiKey)
+        if (goldData) {
+          marketData.gold = {
+            value: goldData.price,
+            change: goldData.change,
+            changePercent: goldData.changePercent,
+            lastUpdate: goldData.timestamp
+          }
+          // 标记为GoldAPI数据源
+          marketData.goldSource = 'goldapi' as unknown as typeof marketData.gold
+        }
+      } catch (goldError) {
+        console.error('GoldAPI error:', goldError)
+      }
     }
     
     // 优先使用FRED获取布伦特原油现货价格

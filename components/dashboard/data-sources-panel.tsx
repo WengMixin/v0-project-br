@@ -78,6 +78,16 @@ const dataSources: DataSource[] = [
     freeLimit: '250次/天',
     docsUrl: 'https://site.financialmodelingprep.com/developer/docs',
     getKeyUrl: 'https://site.financialmodelingprep.com/developer/docs'
+  },
+  {
+    name: 'GoldAPI',
+    description: '黄金现货实时价格（推荐）',
+    features: ['黄金现货价格', '开盘/收盘价', '最高/最低价', '实时报价'],
+    apiKeyRequired: true,
+    apiKeyEnvVar: 'GOLDAPI_KEY',
+    freeLimit: '50次/月',
+    docsUrl: 'https://www.goldapi.io/documentation',
+    getKeyUrl: 'https://www.goldapi.io/'
   }
 ]
 

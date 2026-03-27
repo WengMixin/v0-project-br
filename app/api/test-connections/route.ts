@@ -193,6 +193,49 @@ export async function GET() {
     })
   }
 
+  // Test GoldAPI for gold spot price
+  const goldApiKey = process.env.GOLDAPI_KEY
+  if (goldApiKey) {
+    const start = Date.now()
+    try {
+      const res = await fetch('https://www.goldapi.io/api/XAU/USD', {
+        headers: {
+          'x-access-token': goldApiKey,
+          'Content-Type': 'application/json'
+        }
+      })
+      const latency = Date.now() - start
+      if (res.ok) {
+        const data = await res.json()
+        results.push({
+          name: 'GoldAPI',
+          status: 'connected',
+          message: `连接成功，黄金现货: $${data.price?.toFixed(2) || 'N/A'}/盎司`,
+          latency
+        })
+      } else {
+        results.push({
+          name: 'GoldAPI',
+          status: 'error',
+          message: `API返回错误: ${res.status}`,
+          latency
+        })
+      }
+    } catch (error) {
+      results.push({
+        name: 'GoldAPI',
+        status: 'error',
+        message: `连接失败: ${error instanceof Error ? error.message : 'Unknown error'}`
+      })
+    }
+  } else {
+    results.push({
+      name: 'GoldAPI',
+      status: 'not_configured',
+      message: '未配置 GOLDAPI_KEY'
+    })
+  }
+
   // Test free APIs (Yahoo Finance proxy, Treasury Direct)
   // Yahoo Finance (via unofficial API)
   try {
