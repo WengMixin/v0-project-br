@@ -428,7 +428,7 @@ export async function GET() {
     
     // ========== 黄金价格获取：现货为主，期货为辅 ==========
     // 现货 (XAUUSD): 反映真实物理供需，是核心监控指标
-    // 期货 (GC=F): 华尔街杠杆资金博弈的结果
+    // 期货 (GC=F): 华尔街杠杆资金博弈的���果
     // 正常情况：期货 > 现货 约 $20-30（利息成本）
     // 危机信号：现货 > 期货 = Backwardation（贴水），美元信用崩塌前兆
     
@@ -693,6 +693,10 @@ export async function GET() {
       dxy: marketData.dxy || fallbackData.dxy,
       brent: marketData.brent || fallbackData.brent,
       gold: marketData.gold || fallbackData.gold,
+      goldDetails: marketData.goldDetails,
+      goldSource: marketData.goldSource,
+      brentSpot: marketData.brentSpot,
+      treasuryRates: marketData.treasuryRates,
       source: Object.keys(marketData).length > 0 ? 'live' : 'fallback',
       timestamp: new Date().toISOString()
     }
