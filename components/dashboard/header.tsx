@@ -1,9 +1,11 @@
 'use client'
 
 import { Badge } from '@/components/ui/badge'
-import { Activity, RefreshCw, Clock, Info } from 'lucide-react'
+import { Activity, RefreshCw, Clock, Info, LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useState, useEffect, useCallback } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
 import {
   Tooltip,
   TooltipContent,
@@ -26,6 +28,22 @@ interface DashboardHeaderProps {
 export function DashboardHeader({ onRefresh, isRefreshing = false }: DashboardHeaderProps) {
   const [lastUpdate, setLastUpdate] = useState<string | null>(null)
   const [refreshStatus, setRefreshStatus] = useState<RefreshStatus | null>(null)
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const router = useRouter()
+  
+  const handleLogout = async () => {
+    setIsLoggingOut(true)
+    try {
+      const supabase = createClient()
+      await supabase.auth.signOut()
+      router.push('/auth/login')
+      router.refresh()
+    } catch (error) {
+      console.error('Logout error:', error)
+    } finally {
+      setIsLoggingOut(false)
+    }
+  }
   
   // 计算下次刷新时间
   const calculateNextRefresh = useCallback(() => {
@@ -196,6 +214,17 @@ export function DashboardHeader({ onRefresh, isRefreshing = false }: DashboardHe
             >
               <RefreshCw className={`size-4 ${isRefreshing ? 'animate-spin' : ''}`} />
               <span className="hidden sm:inline">刷新数据</span>
+            </Button>
+            
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={handleLogout}
+              disabled={isLoggingOut}
+              className="gap-2 text-muted-foreground hover:text-foreground"
+            >
+              <LogOut className="size-4" />
+              <span className="hidden sm:inline">登出</span>
             </Button>
           </div>
         </div>
