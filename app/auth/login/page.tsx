@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useState, useEffect, Suspense } from 'react'
 import { AlertTriangle, Lock, Shield } from 'lucide-react'
+import Link from 'next/link'
 
 // 只允许登录的邮箱
 const ALLOWED_EMAIL = 'mixin.weng2016@gmail.com'
@@ -119,7 +120,13 @@ function LoginForm() {
                   </Button>
                 </div>
               </form>
-              <div className="mt-6 text-center text-xs text-muted-foreground">
+              <div className="mt-4 text-center text-sm text-muted-foreground">
+                还没有账户？{' '}
+                <Link href="/auth/sign-up" className="text-primary hover:underline">
+                  立即注册
+                </Link>
+              </div>
+              <div className="mt-2 text-center text-xs text-muted-foreground">
                 此面板仅限授权用户访问
               </div>
             </CardContent>
