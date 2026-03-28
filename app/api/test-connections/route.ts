@@ -78,7 +78,7 @@ export async function GET() {
     })
   }
 
-  // Test Alpha Vantage API
+  // Test Alpha Vantage API (仅用于外汇，不支持黄金XAU)
   const alphaKey = process.env.ALPHA_VANTAGE_API_KEY
   if (alphaKey) {
     const start = Date.now()
@@ -94,14 +94,14 @@ export async function GET() {
           results.push({
             name: 'Alpha Vantage',
             status: 'connected',
-            message: `连接成功，USD/CNY汇率: ${parseFloat(rate).toFixed(4)}`,
+            message: `连接成功，USD/CNY: ${parseFloat(rate).toFixed(4)} (注：免费版不支持XAU黄金)`,
             latency
           })
         } else if (data.Note) {
           results.push({
             name: 'Alpha Vantage',
             status: 'error',
-            message: '达到API调用限制，请稍后再试',
+            message: '达到API调用限制(25次/天)，请稍后再试',
             latency
           })
         } else {
@@ -131,8 +131,56 @@ export async function GET() {
     results.push({
       name: 'Alpha Vantage',
       status: 'not_configured',
-      message: '未配置 ALPHA_VANTAGE_API_KEY'
+      message: '未配置 (可选，免费版不支持黄金价格)'
     })
+  }
+  
+  // Test Yahoo Finance 黄金期货 GC=F（免费备用数据源）
+  {
+    const start = Date.now()
+    try {
+      const res = await fetch(
+        'https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1d&range=1d',
+        {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          }
+        }
+      )
+      const latency = Date.now() - start
+      if (res.ok) {
+        const data = await res.json()
+        const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice
+        if (price) {
+          results.push({
+            name: 'Yahoo Finance (黄金)',
+            status: 'connected',
+            message: `连接成功，黄金期货GC=F: $${price.toFixed(2)}/盎司`,
+            latency
+          })
+        } else {
+          results.push({
+            name: 'Yahoo Finance (黄金)',
+            status: 'error',
+            message: '响应格式异常',
+            latency
+          })
+        }
+      } else {
+        results.push({
+          name: 'Yahoo Finance (黄金)',
+          status: 'error',
+          message: `API返回错误: ${res.status}`,
+          latency
+        })
+      }
+    } catch (error) {
+      results.push({
+        name: 'Yahoo Finance (黄金)',
+        status: 'error',
+        message: `连接失败: ${error instanceof Error ? error.message : 'Unknown error'}`
+      })
+    }
   }
 
   // Test Financial Modeling Prep API - 使用Treasury Rates端点

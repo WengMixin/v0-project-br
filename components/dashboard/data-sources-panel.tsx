@@ -61,13 +61,21 @@ const dataSources: DataSource[] = [
   },
   {
     name: 'Alpha Vantage',
-    description: '股票、外汇、大宗商品数据',
-    features: ['原油价格', '外汇汇率', '股票数据', '技术指标'],
-    apiKeyRequired: true,
+    description: '股票、外汇数据（注：免费版不支持黄金XAU）',
+    features: ['外汇汇率', '股票数据', '技术指标'],
+    apiKeyRequired: false,
     apiKeyEnvVar: 'ALPHA_VANTAGE_API_KEY',
-    freeLimit: '25次/天',
+    freeLimit: '25次/天（可选）',
     docsUrl: 'https://www.alphavantage.co/documentation/',
     getKeyUrl: 'https://www.alphavantage.co/support/#api-key'
+  },
+  {
+    name: 'Yahoo Finance (黄金)',
+    description: '黄金期货GC=F免费数据源',
+    features: ['黄金期货价格', '无需API Key', '无调用限制'],
+    apiKeyRequired: false,
+    freeLimit: '无限制',
+    docsUrl: 'https://finance.yahoo.com/quote/GC=F/'
   },
   {
     name: 'Financial Modeling Prep',
