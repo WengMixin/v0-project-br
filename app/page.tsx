@@ -245,22 +245,42 @@ export default function MacroMonitorDashboard() {
                 description="油价高企，中海油底仓坚决不动"
               />
               
-              <GoldMonitorCard
-                spotPrice={marketData?.gold?.value ?? 0}
-                futuresPrice={(marketData?.goldDetails as { futures?: number })?.futures ?? null}
-                change={marketData?.gold?.change ?? 0}
-                changePercent={marketData?.gold?.changePercent ?? 0}
-                goldDetails={marketData?.goldDetails as {
-                  spot: number | null
-                  futures: number | null
-                  spread: number | null
-                  spreadStatus: 'normal' | 'warning' | 'critical'
-                  spotSource: string
-                  isBackwardation: boolean
-                }}
-                isLoading={isLoading}
-                isLive={marketData?.goldDetails !== undefined}
-              />
+              {(() => {
+                // 解析goldDetails数据
+                const goldDetails = marketData?.goldDetails as {
+                  spot?: number | null
+                  futures?: number | null
+                  spread?: number | null
+                  spreadStatus?: 'normal' | 'warning' | 'critical'
+                  spotSource?: string
+                  isBackwardation?: boolean
+                } | undefined
+                
+                console.log('[v0] GoldMonitorCard props:', {
+                  spotPrice: marketData?.gold?.value,
+                  futuresPrice: goldDetails?.futures,
+                  goldDetails
+                })
+                
+                return (
+                  <GoldMonitorCard
+                    spotPrice={marketData?.gold?.value ?? 0}
+                    futuresPrice={goldDetails?.futures ?? null}
+                    change={marketData?.gold?.change ?? 0}
+                    changePercent={marketData?.gold?.changePercent ?? 0}
+                    goldDetails={goldDetails ? {
+                      spot: goldDetails.spot ?? null,
+                      futures: goldDetails.futures ?? null,
+                      spread: goldDetails.spread ?? null,
+                      spreadStatus: goldDetails.spreadStatus ?? 'normal',
+                      spotSource: goldDetails.spotSource ?? 'unknown',
+                      isBackwardation: goldDetails.isBackwardation ?? false
+                    } : undefined}
+                    isLoading={isLoading}
+                    isLive={goldDetails !== undefined}
+                  />
+                )
+              })()}
             </div>
           )}
         </section>
