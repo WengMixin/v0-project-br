@@ -254,6 +254,11 @@ export default function MacroMonitorDashboard() {
                 isLoading={isLoading}
                 isLive={marketData?.goldDetails !== undefined}
               />
+              {console.log('[v0] Gold data passed to component:', {
+                spot: marketData?.gold?.value,
+                futures: marketData?.goldDetails?.futures,
+                goldDetails: marketData?.goldDetails
+              })}
             </div>
           )}
         </section>

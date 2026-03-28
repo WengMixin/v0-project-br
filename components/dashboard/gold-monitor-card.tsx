@@ -26,6 +26,14 @@ export function GoldMonitorCard({
   isLoading,
   isLive
 }: GoldMonitorCardProps) {
+  console.log('[v0] GoldMonitorCard props received:', {
+    spotPrice,
+    futuresPrice,
+    goldDetails,
+    isLive,
+    actualFuturesFromDetails: goldDetails?.futures
+  })
+  
   const isPositive = change > 0
   const isNegative = change < 0
   
