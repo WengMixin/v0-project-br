@@ -30,8 +30,13 @@ export function IndicatorCard({
   chartData,
   description
 }: IndicatorCardProps) {
-  const isPositive = indicator.change > 0
-  const isNegative = indicator.change < 0
+  // 安全处理可能为null的值
+  const value = indicator.value ?? 0
+  const change = indicator.change ?? 0
+  const changePercent = indicator.changePercent ?? 0
+  
+  const isPositive = change > 0
+  const isNegative = change < 0
   
   const getStatusColor = (status: MarketIndicator['status']) => {
     switch (status) {
@@ -77,8 +82,8 @@ export function IndicatorCard({
     }
   }
 
-  const showWarning = thresholds?.warning && indicator.value >= thresholds.warning
-  const showDanger = thresholds?.danger && indicator.value >= thresholds.danger
+  const showWarning = thresholds?.warning && value >= thresholds.warning
+  const showDanger = thresholds?.danger && value >= thresholds.danger
 
   return (
     <Card className="relative overflow-hidden">
@@ -103,7 +108,7 @@ export function IndicatorCard({
       <CardContent className="space-y-3">
         <div className="flex items-baseline gap-3">
           <span className="text-3xl font-bold tabular-nums tracking-tight">
-            {indicator.value.toLocaleString('zh-CN', { 
+            {value.toLocaleString('zh-CN', { 
               minimumFractionDigits: 2,
               maximumFractionDigits: 2 
             })}
@@ -122,7 +127,7 @@ export function IndicatorCard({
             {isNegative && <TrendingDown className="size-4" />}
             {!isPositive && !isNegative && <Minus className="size-4" />}
             <span>
-              {isPositive ? '+' : ''}{indicator.change.toFixed(2)} ({isPositive ? '+' : ''}{indicator.changePercent.toFixed(2)}%)
+              {isPositive ? '+' : ''}{change.toFixed(2)} ({isPositive ? '+' : ''}{changePercent.toFixed(2)}%)
             </span>
           </div>
         </div>

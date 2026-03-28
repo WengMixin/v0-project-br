@@ -105,9 +105,9 @@ export default function MacroMonitorDashboard() {
 
     return {
       name,
-      value: data.value,
-      change: data.change,
-      changePercent: data.changePercent,
+      value: data.value ?? 0,
+      change: data.change ?? 0,
+      changePercent: data.changePercent ?? 0,
       status,
       lastUpdate: new Date(data.lastUpdate)
     }
