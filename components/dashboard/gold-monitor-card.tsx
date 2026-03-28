@@ -124,22 +124,30 @@ export function GoldMonitorCard({
             </div>
             
             {/* 现货 vs 期货 对比 */}
-            {futuresPrice !== null && (
-              <div className="grid grid-cols-2 gap-3 p-3 rounded-lg bg-secondary/50">
-                <div>
-                  <div className="text-xs text-muted-foreground mb-1">现货 (XAUUSD)</div>
-                  <div className="text-lg font-semibold tabular-nums">
-                    ${spotPrice.toFixed(2)}
-                  </div>
+            <div className="grid grid-cols-2 gap-3 p-3 rounded-lg bg-secondary/50">
+              <div>
+                <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                  现货 (XAUUSD)
+                  <Wifi className="size-3 text-success" />
                 </div>
-                <div>
-                  <div className="text-xs text-muted-foreground mb-1">期货 (GC=F)</div>
-                  <div className="text-lg font-semibold tabular-nums">
-                    ${futuresPrice.toFixed(2)}
-                  </div>
+                <div className="text-lg font-semibold tabular-nums">
+                  ${spotPrice.toFixed(2)}
                 </div>
               </div>
-            )}
+              <div>
+                <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                  期货 (GC=F)
+                  {futuresPrice !== null ? (
+                    <Wifi className="size-3 text-success" />
+                  ) : (
+                    <WifiOff className="size-3 text-warning" />
+                  )}
+                </div>
+                <div className="text-lg font-semibold tabular-nums">
+                  {futuresPrice !== null ? `$${futuresPrice.toFixed(2)}` : '获取中...'}
+                </div>
+              </div>
+            </div>
             
             {/* 价差分析 */}
             {spread !== null && (

@@ -412,10 +412,26 @@ export async function GET() {
     let goldSpotPrice: number | null = null
     let goldSpotSource = 'none'
     let goldFuturesPrice: number | null = null
+    let goldFuturesChange: number = 0
+    let goldFuturesChangePercent: number = 0
     
-    // 保存Yahoo获取的期货价格
-    if (marketData.gold) {
-      goldFuturesPrice = marketData.gold.value
+    // 首先单独获取期货价格 (GC=F) - 无论如何都要获取用于价差计算
+    try {
+      const yahooGoldFutures = await fetchYahooGold()
+      if (yahooGoldFutures) {
+        goldFuturesPrice = yahooGoldFutures.price
+        goldFuturesChange = yahooGoldFutures.change
+        goldFuturesChangePercent = yahooGoldFutures.changePercent
+        console.log('[v0] Gold FUTURES from Yahoo GC=F:', yahooGoldFutures.price)
+      }
+    } catch (futuresError) {
+      console.error('[v0] Yahoo Gold Futures error:', futuresError)
+      // 如果Yahoo失败，尝试从之前的marketData获取
+      if (marketData.gold) {
+        goldFuturesPrice = marketData.gold.value
+        goldFuturesChange = marketData.gold.change ?? 0
+        goldFuturesChangePercent = marketData.gold.changePercent ?? 0
+      }
     }
     
     // 策略1: 优先使用 Tiingo API 获取现货价格（推荐）
@@ -496,11 +512,20 @@ export async function GET() {
     marketData.goldDetails = {
       spot: goldSpotPrice,
       futures: goldFuturesPrice,
+      futuresChange: goldFuturesChange,
+      futuresChangePercent: goldFuturesChangePercent,
       spread: goldSpread,
       spreadStatus: goldSpreadStatus,
       spotSource: goldSpotSource,
       isBackwardation: goldSpread !== null && goldSpread < 0
     } as unknown as typeof marketData.gold
+    
+    console.log('[v0] Gold Details:', JSON.stringify({
+      spot: goldSpotPrice,
+      futures: goldFuturesPrice,
+      spread: goldSpread,
+      spreadStatus: goldSpreadStatus
+    }))
     
     // 移除旧的备用逻辑，直接跳到原油获取
     // 原有的 MetalpriceAPI 备用逻辑已被 Tiingo 替代
@@ -551,7 +576,7 @@ export async function GET() {
       console.warn('[v0] No gold price source available')
     }
     
-    // 优先使用FRED获取布伦特原油现货价格
+    // 优先使用FRED��取布伦特原油现货价格
     const fredApiKey = process.env.FRED_API_KEY
     if (fredApiKey) {
       try {
