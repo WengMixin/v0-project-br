@@ -2,58 +2,231 @@
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Gavel, AlertTriangle, CheckCircle, XCircle, Wifi, WifiOff } from 'lucide-react'
+import { Gavel, AlertTriangle, CheckCircle, XCircle, Wifi, WifiOff, TrendingDown, TrendingUp, Building2 } from 'lucide-react'
 import { Spinner } from '@/components/ui/spinner'
 import { cn } from '@/lib/utils'
-import type { TreasuryAuction } from '@/lib/market-data'
-import { THRESHOLDS } from '@/lib/market-data'
+
+type AlertLevel = 'NORMAL' | 'WARNING' | 'CRITICAL'
+
+interface TreasuryAuction {
+  date: string
+  type: string
+  bidToCover: number
+  rate: number | null
+  dealerRatio: number | null
+  directRatio?: number | null
+  indirectRatio?: number | null
+  status: 'normal' | 'weak' | 'danger'
+  alertLevel: AlertLevel
+  tail?: number
+}
+
+interface AuctionEvaluation {
+  alertLevel: AlertLevel
+  status: string
+  action: string
+}
+
+interface LatestAuction {
+  auctionDate: string
+  securityTerm: string
+  bidToCover?: number
+  highYield?: number | null
+  dealerRatio?: number
+  directRatio?: number
+  indirectRatio?: number
+  dataAvailable: boolean
+}
 
 interface TreasuryAuctionCardProps {
   auctions: TreasuryAuction[]
+  latestAuction?: LatestAuction | null
+  evaluation?: AuctionEvaluation | null
   isLoading?: boolean
   isLive?: boolean
 }
 
-export function TreasuryAuctionCard({ auctions, isLoading, isLive }: TreasuryAuctionCardProps) {
-  const getStatusIcon = (status: TreasuryAuction['status']) => {
-    switch (status) {
-      case 'danger':
-        return <XCircle className="size-4 text-danger" />
-      case 'weak':
-        return <AlertTriangle className="size-4 text-warning" />
+export function TreasuryAuctionCard({ 
+  auctions, 
+  latestAuction, 
+  evaluation, 
+  isLoading, 
+  isLive 
+}: TreasuryAuctionCardProps) {
+  
+  const getAlertBgColor = (level: AlertLevel) => {
+    switch (level) {
+      case 'CRITICAL':
+        return 'bg-danger/20 border-danger'
+      case 'WARNING':
+        return 'bg-warning/20 border-warning'
       default:
-        return <CheckCircle className="size-4 text-success" />
+        return 'bg-success/20 border-success'
     }
   }
   
-  const getStatusLabel = (status: TreasuryAuction['status']) => {
-    switch (status) {
-      case 'danger':
-        return '需求疲软'
-      case 'weak':
-        return '略显疲态'
+  const getAlertTextColor = (level: AlertLevel) => {
+    switch (level) {
+      case 'CRITICAL':
+        return 'text-danger'
+      case 'WARNING':
+        return 'text-warning'
       default:
-        return '需求正常'
+        return 'text-success'
+    }
+  }
+  
+  const getStatusIcon = (level: AlertLevel) => {
+    switch (level) {
+      case 'CRITICAL':
+        return <XCircle className="size-5" />
+      case 'WARNING':
+        return <AlertTriangle className="size-5" />
+      default:
+        return <CheckCircle className="size-5" />
     }
   }
   
   const getBidToCoverColor = (ratio: number) => {
-    if (ratio < THRESHOLDS.bidToCover.danger) return 'text-danger'
-    if (ratio < THRESHOLDS.bidToCover.warning) return 'text-warning'
+    if (ratio < 2.0) return 'text-danger'
+    if (ratio < 2.3) return 'text-warning'
     return 'text-success'
+  }
+  
+  const getDealerRatioColor = (ratio: number) => {
+    if (ratio > 20) return 'text-danger'
+    if (ratio > 15) return 'text-warning'
+    return 'text-success'
+  }
+
+  const renderLatestAuctionPanel = () => {
+    if (!latestAuction?.dataAvailable || !evaluation) return null
+    
+    return (
+      <div className={cn(
+        'p-4 rounded-lg border-2 mb-4',
+        getAlertBgColor(evaluation.alertLevel)
+      )}>
+        <div className="flex items-center gap-2 mb-3">
+          <span className={getAlertTextColor(evaluation.alertLevel)}>
+            {getStatusIcon(evaluation.alertLevel)}
+          </span>
+          <h3 className={cn('font-bold text-lg', getAlertTextColor(evaluation.alertLevel))}>
+            {evaluation.status}
+          </h3>
+        </div>
+        
+        {/* 核心指标网格 */}
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="p-3 rounded-lg bg-background/50">
+            <div className="text-xs text-muted-foreground flex items-center gap-1">
+              <TrendingUp className="size-3" /> 投标倍数 (需求)
+            </div>
+            <div className={cn(
+              'text-2xl font-black tabular-nums',
+              getBidToCoverColor(latestAuction.bidToCover ?? 0)
+            )}>
+              {latestAuction.bidToCover?.toFixed(2) ?? 'N/A'}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {(latestAuction.bidToCover ?? 0) < 2.3 ? '需求偏弱' : '需求健康'}
+            </div>
+          </div>
+          
+          <div className="p-3 rounded-lg bg-background/50">
+            <div className="text-xs text-muted-foreground flex items-center gap-1">
+              <Building2 className="size-3" /> 华尔街接盘率
+            </div>
+            <div className={cn(
+              'text-2xl font-black tabular-nums',
+              getDealerRatioColor(latestAuction.dealerRatio ?? 0)
+            )}>
+              {latestAuction.dealerRatio?.toFixed(1) ?? 'N/A'}%
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {(latestAuction.dealerRatio ?? 0) > 15 ? '被迫吃进' : '正常分销'}
+            </div>
+          </div>
+          
+          <div className="p-3 rounded-lg bg-background/50">
+            <div className="text-xs text-muted-foreground flex items-center gap-1">
+              <TrendingDown className="size-3" /> 最高收益率
+            </div>
+            <div className="text-2xl font-black tabular-nums text-foreground">
+              {latestAuction.highYield?.toFixed(2) ?? 'N/A'}%
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {latestAuction.securityTerm} ({latestAuction.auctionDate})
+            </div>
+          </div>
+        </div>
+        
+        {/* 买家结构分析 */}
+        {latestAuction.directRatio !== undefined && latestAuction.indirectRatio !== undefined && (
+          <div className="mb-4">
+            <div className="text-xs text-muted-foreground mb-2">买家结构分析</div>
+            <div className="flex h-3 rounded-full overflow-hidden bg-background/50">
+              <div 
+                className="bg-primary/80" 
+                style={{ width: `${latestAuction.indirectRatio}%` }}
+                title={`海外央行/机构: ${latestAuction.indirectRatio.toFixed(1)}%`}
+              />
+              <div 
+                className="bg-success/80" 
+                style={{ width: `${latestAuction.directRatio}%` }}
+                title={`直接买家: ${latestAuction.directRatio.toFixed(1)}%`}
+              />
+              <div 
+                className={cn(
+                  (latestAuction.dealerRatio ?? 0) > 15 ? 'bg-warning/80' : 'bg-muted-foreground/50'
+                )}
+                style={{ width: `${latestAuction.dealerRatio}%` }}
+                title={`一级交易商: ${latestAuction.dealerRatio?.toFixed(1)}%`}
+              />
+            </div>
+            <div className="flex justify-between text-xs text-muted-foreground mt-1">
+              <span>海外央行 {latestAuction.indirectRatio?.toFixed(1)}%</span>
+              <span>直接买家 {latestAuction.directRatio?.toFixed(1)}%</span>
+              <span>交易商 {latestAuction.dealerRatio?.toFixed(1)}%</span>
+            </div>
+          </div>
+        )}
+        
+        {/* 操作建议 */}
+        <div className={cn(
+          'p-3 rounded-lg border',
+          evaluation.alertLevel === 'CRITICAL' ? 'bg-danger/10 border-danger/30' :
+          evaluation.alertLevel === 'WARNING' ? 'bg-warning/10 border-warning/30' :
+          'bg-success/10 border-success/30'
+        )}>
+          <div className="text-sm font-medium">操作建议</div>
+          <div className="text-sm mt-1">{evaluation.action}</div>
+        </div>
+      </div>
+    )
   }
 
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center gap-2">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10">
-            <Gavel className="size-4 text-primary" />
+          <div className={cn(
+            'flex size-8 items-center justify-center rounded-lg',
+            evaluation?.alertLevel === 'CRITICAL' ? 'bg-danger/20' :
+            evaluation?.alertLevel === 'WARNING' ? 'bg-warning/20' :
+            'bg-primary/10'
+          )}>
+            <Gavel className={cn(
+              'size-4',
+              evaluation?.alertLevel === 'CRITICAL' ? 'text-danger' :
+              evaluation?.alertLevel === 'WARNING' ? 'text-warning' :
+              'text-primary'
+            )} />
           </div>
           <div>
-            <CardTitle className="text-base">国债拍卖监控</CardTitle>
+            <CardTitle className="text-base">美债核爆监控雷达</CardTitle>
             <CardDescription className="flex items-center gap-2">
-              关注投标倍数与尾部利差
+              10年期国债拍卖 - 华尔街接盘监控
               {isLive !== undefined && (
                 isLive ? (
                   <span className="flex items-center gap-1 text-success">
@@ -75,61 +248,78 @@ export function TreasuryAuctionCard({ auctions, isLoading, isLive }: TreasuryAuc
           <div className="flex items-center justify-center py-8">
             <Spinner className="size-6" />
           </div>
-        ) : auctions.length === 0 ? (
-          <div className="text-center py-8 text-sm text-muted-foreground">
-            暂无拍卖数据
-          </div>
         ) : (
-        <div className="space-y-4">
-          {auctions.map((auction, index) => (
-            <div
-              key={index}
-              className={cn(
-                'flex items-center justify-between p-3 rounded-lg bg-secondary/50',
-                auction.status === 'danger' && 'bg-danger/10 border border-danger/20',
-                auction.status === 'weak' && 'bg-warning/10 border border-warning/20'
-              )}
-            >
-              <div className="flex items-center gap-3">
-                {getStatusIcon(auction.status)}
-                <div>
-                  <div className="font-medium text-sm">{auction.type}</div>
-                  <div className="text-xs text-muted-foreground">{auction.date}</div>
-                </div>
+          <>
+            {/* 最新拍卖警报面板 */}
+            {renderLatestAuctionPanel()}
+            
+            {/* 历史拍卖列表 */}
+            {auctions.length === 0 ? (
+              <div className="text-center py-8 text-sm text-muted-foreground">
+                暂无拍卖数据
               </div>
-              
-              <div className="flex items-center gap-4 text-right">
-                <div>
-                  <div className="text-xs text-muted-foreground">投标倍数</div>
-                  <div className={cn('font-semibold tabular-nums', getBidToCoverColor(auction.bidToCover))}>
-                    {auction.bidToCover.toFixed(2)}x
+            ) : (
+              <div className="space-y-2">
+                <div className="text-xs text-muted-foreground mb-2">近期拍卖记录</div>
+                {auctions.slice(0, 5).map((auction, index) => (
+                  <div
+                    key={index}
+                    className={cn(
+                      'flex items-center justify-between p-2 rounded-lg text-sm',
+                      auction.alertLevel === 'CRITICAL' && 'bg-danger/10 border border-danger/20',
+                      auction.alertLevel === 'WARNING' && 'bg-warning/10 border border-warning/20',
+                      auction.alertLevel === 'NORMAL' && 'bg-secondary/50'
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className={getAlertTextColor(auction.alertLevel)}>
+                        {getStatusIcon(auction.alertLevel)}
+                      </span>
+                      <div>
+                        <div className="font-medium">{auction.date}</div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-4 text-right">
+                      <div>
+                        <div className="text-xs text-muted-foreground">投标倍数</div>
+                        <div className={cn('font-semibold tabular-nums', getBidToCoverColor(auction.bidToCover))}>
+                          {auction.bidToCover.toFixed(2)}x
+                        </div>
+                      </div>
+                      {auction.dealerRatio !== null && (
+                        <div>
+                          <div className="text-xs text-muted-foreground">接盘率</div>
+                          <div className={cn('font-semibold tabular-nums', getDealerRatioColor(auction.dealerRatio))}>
+                            {auction.dealerRatio.toFixed(1)}%
+                          </div>
+                        </div>
+                      )}
+                      {auction.rate !== null && (
+                        <div>
+                          <div className="text-xs text-muted-foreground">收益率</div>
+                          <div className="font-semibold tabular-nums text-muted-foreground">
+                            {auction.rate.toFixed(2)}%
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-                <div>
-                  <div className="text-xs text-muted-foreground">尾部利差</div>
-                  <div className={cn(
-                    'font-semibold tabular-nums',
-                    auction.tail > 1.5 ? 'text-danger' : auction.tail > 1 ? 'text-warning' : 'text-muted-foreground'
-                  )}>
-                    {auction.tail.toFixed(1)} bp
-                  </div>
-                </div>
+                ))}
+              </div>
+            )}
+            
+            {/* 判定规则说明 */}
+            <div className="mt-4 p-3 rounded-lg bg-accent/50 border border-border">
+              <div className="text-xs text-muted-foreground leading-relaxed">
+                <span className="font-medium text-foreground">核爆判定规则：</span>
+                <span className="text-danger"> 投标倍数 &lt; 2.0 或 接盘率 &gt; 20%</span> = 核爆警告；
+                <span className="text-warning"> 投标倍数 &lt; 2.3 或 接盘率 &gt; 15%</span> = 警戒提示。
+                华尔街被迫接盘比例越高，说明市场真实需求越弱，美债危机越近！
               </div>
             </div>
-          ))}
-        </div>
+          </>
         )}
-        
-        <div className="mt-4 p-3 rounded-lg bg-accent/50 border border-border">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="size-4 text-warning shrink-0 mt-0.5" />
-            <div className="text-xs text-muted-foreground leading-relaxed">
-              <span className="font-medium text-foreground">爆雷信号：</span>
-              如果投标倍数低于 {THRESHOLDS.bidToCover.danger}x 或尾部利差超过 2bp，说明银行不买账。
-              这是 YCC（无限量印钞）即将被迫出台的最强前兆，准备满仓干黄金！
-            </div>
-          </div>
-        </div>
       </CardContent>
     </Card>
   )

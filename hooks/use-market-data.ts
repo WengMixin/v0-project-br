@@ -52,16 +52,40 @@ export function useMarketData() {
 }
 
 export interface TreasuryAuctionResponse {
+  success: boolean
+  message?: string
   auctions: Array<{
     date: string
     type: string
-    bidToCover: number | null
+    bidToCover: number
     rate: number | null
+    dealerRatio: number | null
+    directRatio?: number | null
+    indirectRatio?: number | null
     status: 'normal' | 'weak' | 'danger'
+    alertLevel: 'NORMAL' | 'WARNING' | 'CRITICAL'
+    tail?: number
   }>
+  latestAuction?: {
+    auctionDate: string
+    securityTerm: string
+    bidToCover?: number
+    highYield?: number | null
+    dealerRatio?: number
+    directRatio?: number
+    indirectRatio?: number
+    dataAvailable: boolean
+  } | null
+  evaluation?: {
+    alertLevel: 'NORMAL' | 'WARNING' | 'CRITICAL'
+    status: string
+    action: string
+  } | null
   summary: {
     avgBidToCover: string
     hasWarning: boolean
+    criticalCount?: number
+    warningCount?: number
     totalAuctions: number
   }
   source: string
@@ -80,8 +104,12 @@ export function useTreasuryAuctions() {
   
   return {
     data,
+    auctions: data?.auctions ?? [],
+    latestAuction: data?.latestAuction,
+    evaluation: data?.evaluation,
     isLoading,
     isError: error,
+    isLive: data?.source === 'Treasury Direct',
     refresh: mutate
   }
 }

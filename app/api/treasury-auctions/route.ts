@@ -1,85 +1,203 @@
 import { NextResponse } from 'next/server'
 
-// 美国财政部官方API - 无需API Key
-// 文档: https://fiscaldata.treasury.gov/api-documentation/
+// 强制动态渲染，绝对不能缓存宏观数据！
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
-interface TreasuryAuctionData {
-  auction_date: string
-  security_type: string
-  security_term: string
-  bid_to_cover_ratio: string | null
-  high_investment_rate: string | null
-  high_discount_rate: string | null
-  offering_amt: string
-  allotted_pct: string | null
+// 美国财政部官方API - Treasury Direct
+// 专门抓取10年期国债拍卖数据
+
+interface TreasuryDirectAuction {
+  cusip: string
+  issueDate: string
+  securityType: string
+  securityTerm: string
+  maturityDate: string
+  interestRate: string
+  auctionDate: string
+  highYield: string | null
+  highDiscountRate: string | null
+  highPrice: string | null
+  allottedPct: string | null
+  bidToCoverRatio: string | null
+  totalAccepted: string | null
+  totalTendered: string | null
+  primaryDealerAccepted: string | null
+  primaryDealerTendered: string | null
+  directBidderAccepted: string | null
+  directBidderTendered: string | null
+  indirectBidderAccepted: string | null
+  indirectBidderTendered: string | null
+  averageMedianYield: string | null
+  lowYield: string | null
 }
 
-interface TreasuryApiResponse {
-  data?: TreasuryAuctionData[]
-  meta?: {
-    total_count: number
+type AlertLevel = 'NORMAL' | 'WARNING' | 'CRITICAL'
+
+interface AuctionEvaluation {
+  alertLevel: AlertLevel
+  status: string
+  action: string
+}
+
+function evaluateAuction(bidToCover: number, dealerRatio: number): AuctionEvaluation {
+  // 核心公式：根据投标倍数和华尔街接盘比例判断危险等级
+  if (bidToCover < 2.0 || dealerRatio > 20) {
+    return {
+      alertLevel: 'CRITICAL',
+      status: '核爆警告 (流动性休克)',
+      action: '系统濒临崩溃！准备满仓黄金(XAUUSD)，左侧准备接入硬核科技！'
+    }
+  } else if (bidToCover < 2.3 || dealerRatio > 15) {
+    return {
+      alertLevel: 'WARNING',
+      status: '警戒提示 (买盘萎缩)',
+      action: '密切关注明天的隔夜逆回购(RRP)和美元指数，子弹上膛。'
+    }
+  }
+  return {
+    alertLevel: 'NORMAL',
+    status: '安全 (维持收息防守)',
+    action: '底仓神华/海油不动，科技股继续装死。'
   }
 }
 
 export async function GET() {
   try {
-    // 获取最近的国债拍卖数据
-    const url = 'https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/od/auctions_query?sort=-auction_date&page[size]=20&filter=security_type:in:(Note,Bond)'
+    // 调用 Treasury Direct API，锁定 10年期国债
+    const url = 'https://www.treasurydirect.gov/TA_WS/securities/search?format=json&securityType=Note&securityTerm=10-Year'
     
-    const response = await fetch(url, {
-      next: { revalidate: 3600 } // 缓存1小时
-    })
+    // 明确设置 cache: 'no-store'，确保每次拿到最新鲜的开标结果
+    const response = await fetch(url, { cache: 'no-store' })
     
     if (!response.ok) {
-      throw new Error(`Treasury API error: ${response.status}`)
+      throw new Error(`Treasury Direct API 请求失败: ${response.status}`)
     }
     
-    const data: TreasuryApiResponse = await response.json()
+    const data: TreasuryDirectAuction[] = await response.json()
     
-    // 处理拍卖数据
-    const auctions = (data.data || []).map((auction: TreasuryAuctionData) => {
-      const bidToCover = auction.bid_to_cover_ratio 
-        ? parseFloat(auction.bid_to_cover_ratio) 
-        : null
+    if (!data || data.length === 0) {
+      return NextResponse.json({ 
+        success: false, 
+        message: '暂无拍卖数据',
+        auctions: [],
+        evaluation: null
+      }, { status: 404 })
+    }
+    
+    // 取最新的一期开标结果
+    const latestAuction = data[0]
+    
+    // 提取核心数据
+    const bidToCover = latestAuction.bidToCoverRatio ? parseFloat(latestAuction.bidToCoverRatio) : null
+    const highYield = latestAuction.highYield ? parseFloat(latestAuction.highYield) : null
+    const totalAccepted = latestAuction.totalAccepted ? parseFloat(latestAuction.totalAccepted) : null
+    const primaryDealerAccepted = latestAuction.primaryDealerAccepted ? parseFloat(latestAuction.primaryDealerAccepted) : null
+    const directBidderAccepted = latestAuction.directBidderAccepted ? parseFloat(latestAuction.directBidderAccepted) : null
+    const indirectBidderAccepted = latestAuction.indirectBidderAccepted ? parseFloat(latestAuction.indirectBidderAccepted) : null
+    
+    // 处理所有近期拍卖数据
+    const auctions = data.slice(0, 10).map((auction: TreasuryDirectAuction) => {
+      const btc = auction.bidToCoverRatio ? parseFloat(auction.bidToCoverRatio) : null
+      const total = auction.totalAccepted ? parseFloat(auction.totalAccepted) : null
+      const dealer = auction.primaryDealerAccepted ? parseFloat(auction.primaryDealerAccepted) : null
+      const direct = auction.directBidderAccepted ? parseFloat(auction.directBidderAccepted) : null
+      const indirect = auction.indirectBidderAccepted ? parseFloat(auction.indirectBidderAccepted) : null
       
-      // 计算状态
+      // 计算华尔街接盘比例
+      const dealerRatio = (total && dealer) ? (dealer / total) * 100 : null
+      
+      // 计算各类买家比例
+      const directRatio = (total && direct) ? (direct / total) * 100 : null
+      const indirectRatio = (total && indirect) ? (indirect / total) * 100 : null
+      
+      // 评估状态
       let status: 'normal' | 'weak' | 'danger' = 'normal'
-      if (bidToCover !== null) {
-        if (bidToCover < 2.0) status = 'danger'
-        else if (bidToCover < 2.3) status = 'weak'
+      let alertLevel: AlertLevel = 'NORMAL'
+      
+      if (btc !== null && dealerRatio !== null) {
+        const eval_ = evaluateAuction(btc, dealerRatio)
+        alertLevel = eval_.alertLevel
+        if (alertLevel === 'CRITICAL') status = 'danger'
+        else if (alertLevel === 'WARNING') status = 'weak'
       }
       
       return {
-        date: auction.auction_date,
-        type: `${auction.security_term} ${auction.security_type}`,
-        bidToCover,
-        rate: auction.high_investment_rate 
-          ? parseFloat(auction.high_investment_rate)
-          : auction.high_discount_rate 
-            ? parseFloat(auction.high_discount_rate)
-            : null,
-        offeringAmount: parseFloat(auction.offering_amt),
-        status
+        date: auction.auctionDate,
+        type: `${auction.securityTerm} ${auction.securityType}`,
+        bidToCover: btc ?? 0,
+        rate: auction.highYield ? parseFloat(auction.highYield) : null,
+        dealerRatio: dealerRatio ? parseFloat(dealerRatio.toFixed(2)) : null,
+        directRatio: directRatio ? parseFloat(directRatio.toFixed(2)) : null,
+        indirectRatio: indirectRatio ? parseFloat(indirectRatio.toFixed(2)) : null,
+        totalAccepted: total,
+        status,
+        alertLevel,
+        // 保留tail字段兼容旧组件（用dealer ratio估算）
+        tail: dealerRatio && dealerRatio > 15 ? (dealerRatio - 10) / 5 : 0.5
       }
-    }).filter((a: { bidToCover: number | null }) => a.bidToCover !== null)
+    }).filter((a: { bidToCover: number }) => a.bidToCover > 0)
     
-    // 计算平均投标倍数
-    const avgBidToCover = auctions.length > 0
-      ? auctions.reduce((sum: number, a: { bidToCover: number | null }) => sum + (a.bidToCover || 0), 0) / auctions.length
-      : 0
+    // 如果最新数据还不完整（预告期），返回提示
+    if (!bidToCover || !totalAccepted || !primaryDealerAccepted) {
+      return NextResponse.json({
+        success: true,
+        message: '本期拍卖详细接盘数据尚未公布，请开标后重试。',
+        auctions,
+        latestAuction: {
+          auctionDate: latestAuction.auctionDate,
+          securityTerm: latestAuction.securityTerm,
+          dataAvailable: false
+        },
+        evaluation: null,
+        source: 'Treasury Direct',
+        timestamp: new Date().toISOString()
+      })
+    }
     
-    // 检查是否有危险信号
-    const hasWarning = auctions.some((a: { status: string }) => a.status === 'weak' || a.status === 'danger')
+    // 计算华尔街接盘比例
+    const dealerRatio = (primaryDealerAccepted / totalAccepted) * 100
+    const directRatio = directBidderAccepted ? (directBidderAccepted / totalAccepted) * 100 : 0
+    const indirectRatio = indirectBidderAccepted ? (indirectBidderAccepted / totalAccepted) * 100 : 0
+    
+    // 宏观裁判引擎：自动打分评判
+    const evaluation = evaluateAuction(bidToCover, dealerRatio)
     
     return NextResponse.json({
-      auctions: auctions.slice(0, 10),
-      summary: {
-        avgBidToCover: avgBidToCover.toFixed(2),
-        hasWarning,
-        totalAuctions: data.meta?.total_count || auctions.length
-      },
+      success: true,
+      timestamp: new Date().toISOString(),
       source: 'Treasury Direct',
-      timestamp: new Date().toISOString()
+      // 最新一期详细数据
+      latestAuction: {
+        auctionDate: latestAuction.auctionDate,
+        securityTerm: latestAuction.securityTerm,
+        bidToCover,
+        highYield,
+        dealerRatio: parseFloat(dealerRatio.toFixed(2)),
+        directRatio: parseFloat(directRatio.toFixed(2)),
+        indirectRatio: parseFloat(indirectRatio.toFixed(2)),
+        raw: {
+          totalAccepted,
+          primaryDealerAccepted,
+          directBidderAccepted,
+          indirectBidderAccepted
+        },
+        dataAvailable: true
+      },
+      // 警报评估
+      evaluation,
+      // 近期所有拍卖列表
+      auctions,
+      // 汇总统计
+      summary: {
+        avgBidToCover: auctions.length > 0 
+          ? (auctions.reduce((sum: number, a: { bidToCover: number }) => sum + a.bidToCover, 0) / auctions.length).toFixed(2)
+          : '0',
+        hasWarning: auctions.some((a: { alertLevel: AlertLevel }) => a.alertLevel !== 'NORMAL'),
+        criticalCount: auctions.filter((a: { alertLevel: AlertLevel }) => a.alertLevel === 'CRITICAL').length,
+        warningCount: auctions.filter((a: { alertLevel: AlertLevel }) => a.alertLevel === 'WARNING').length,
+        totalAuctions: auctions.length
+      }
     })
     
   } catch (error) {
@@ -87,18 +205,27 @@ export async function GET() {
     
     // 返回模拟数据作为备用
     return NextResponse.json({
+      success: false,
       auctions: [
-        { date: '2026-03-20', type: '10-Year Note', bidToCover: 2.45, rate: 4.38, status: 'normal' },
-        { date: '2026-03-13', type: '30-Year Bond', bidToCover: 2.21, rate: 4.62, status: 'weak' },
-        { date: '2026-03-06', type: '10-Year Note', bidToCover: 2.58, rate: 4.25, status: 'normal' },
+        { date: '2026-03-20', type: '10-Year Note', bidToCover: 2.45, rate: 4.38, dealerRatio: 12.5, status: 'normal', alertLevel: 'NORMAL', tail: 0.5 },
+        { date: '2026-03-13', type: '10-Year Note', bidToCover: 2.21, rate: 4.62, dealerRatio: 16.2, status: 'weak', alertLevel: 'WARNING', tail: 1.2 },
+        { date: '2026-03-06', type: '10-Year Note', bidToCover: 2.58, rate: 4.25, dealerRatio: 11.8, status: 'normal', alertLevel: 'NORMAL', tail: 0.3 },
       ],
+      latestAuction: null,
+      evaluation: {
+        alertLevel: 'NORMAL',
+        status: '安全 (维持收息防守)',
+        action: '底仓神华/海油不动，科技股继续装死。'
+      },
       summary: {
         avgBidToCover: '2.41',
         hasWarning: true,
+        criticalCount: 0,
+        warningCount: 1,
         totalAuctions: 3
       },
       source: 'fallback',
-      error: 'Using fallback data',
+      error: error instanceof Error ? error.message : 'Unknown error',
       timestamp: new Date().toISOString()
     })
   }

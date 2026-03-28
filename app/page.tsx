@@ -32,7 +32,14 @@ export default function MacroMonitorDashboard() {
     }))
   }, [])
   const { data: marketData, isLoading, isError, refresh, isLive } = useMarketData()
-  const { data: auctionData, isLoading: auctionsLoading, refresh: refreshAuctions } = useTreasuryAuctions()
+  const { 
+    auctions, 
+    latestAuction, 
+    evaluation: auctionEvaluation, 
+    isLoading: auctionsLoading, 
+    isLive: auctionsIsLive,
+    refresh: refreshAuctions 
+  } = useTreasuryAuctions()
   const { data: cpiDataLive, isLoading: cpiLoading, isLive: cpiIsLive, refresh: refreshCPI } = useCPIData()
   
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -254,15 +261,11 @@ export default function MacroMonitorDashboard() {
         <section className="mb-8">
           <div className="grid gap-4 lg:grid-cols-2">
             <TreasuryAuctionCard 
-              auctions={auctionData?.auctions?.map(a => ({
-                date: a.date,
-                type: a.type,
-                bidToCover: a.bidToCover || 0,
-                tail: a.rate ? (a.rate * 100 - Math.floor(a.rate * 100)) * 10 : 0,
-                status: a.status
-              })) || []}
+              auctions={auctions}
+              latestAuction={latestAuction}
+              evaluation={auctionEvaluation}
               isLoading={auctionsLoading}
-              isLive={auctionData?.source !== 'fallback'}
+              isLive={auctionsIsLive}
             />
             <FedStatementsCard statements={fedStatements} />
           </div>
@@ -334,7 +337,7 @@ export default function MacroMonitorDashboard() {
                     <p className="text-xs text-muted-foreground leading-relaxed">
                       核心CPI环比 {cpiData.coreMonthly}% 
                       {cpiData.coreMonthly >= 0.3 ? '超过警戒线' : '处于可控范围'}，
-                      {cpiData.coreMonthly >= 0.4 ? '通胀黏性严重，美联储短期难以转向' : '关注后续数据变化'}。
+                      {cpiData.coreMonthly >= 0.4 ? '通胀黏性严重���美联储短期难以转向' : '关注后续数据变化'}。
                     </p>
                   </div>
                 </div>
