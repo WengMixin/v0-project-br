@@ -245,42 +245,15 @@ export default function MacroMonitorDashboard() {
                 description="油价高企，中海油底仓坚决不动"
               />
               
-              {(() => {
-                // 解析goldDetails数据
-                const goldDetails = marketData?.goldDetails as {
-                  spot?: number | null
-                  futures?: number | null
-                  spread?: number | null
-                  spreadStatus?: 'normal' | 'warning' | 'critical'
-                  spotSource?: string
-                  isBackwardation?: boolean
-                } | undefined
-                
-                console.log('[v0] GoldMonitorCard props:', {
-                  spotPrice: marketData?.gold?.value,
-                  futuresPrice: goldDetails?.futures,
-                  goldDetails
-                })
-                
-                return (
-                  <GoldMonitorCard
-                    spotPrice={marketData?.gold?.value ?? 0}
-                    futuresPrice={goldDetails?.futures ?? null}
-                    change={marketData?.gold?.change ?? 0}
-                    changePercent={marketData?.gold?.changePercent ?? 0}
-                    goldDetails={goldDetails ? {
-                      spot: goldDetails.spot ?? null,
-                      futures: goldDetails.futures ?? null,
-                      spread: goldDetails.spread ?? null,
-                      spreadStatus: goldDetails.spreadStatus ?? 'normal',
-                      spotSource: goldDetails.spotSource ?? 'unknown',
-                      isBackwardation: goldDetails.isBackwardation ?? false
-                    } : undefined}
-                    isLoading={isLoading}
-                    isLive={goldDetails !== undefined}
-                  />
-                )
-              })()}
+              <GoldMonitorCard
+                spotPrice={marketData?.gold?.value ?? 0}
+                futuresPrice={marketData?.goldDetails?.futures ?? null}
+                change={marketData?.gold?.change ?? 0}
+                changePercent={marketData?.gold?.changePercent ?? 0}
+                goldDetails={marketData?.goldDetails}
+                isLoading={isLoading}
+                isLive={marketData?.goldDetails !== undefined}
+              />
             </div>
           )}
         </section>
@@ -339,7 +312,7 @@ export default function MacroMonitorDashboard() {
                     <div className="font-medium text-sm">大宗商品</div>
                     <p className="text-xs text-muted-foreground leading-relaxed">
                       原油 ${marketData?.brent?.value?.toFixed(2) || '--'}/桶 维持震荡，
-                      黄金 ${marketData?.gold?.value?.toFixed(0) || '--'}/盎司 受益于避险情绪。
+                      黄�� ${marketData?.gold?.value?.toFixed(0) || '--'}/盎司 受益于避险情绪。
                     </p>
                   </div>
                 </div>

@@ -366,12 +366,37 @@ export async function GET() {
     
     const symbolList = Object.values(symbols)
     
-    let marketData: Record<string, {
+    interface MarketDataItem {
       value: number
       change: number
       changePercent: number
       lastUpdate: string
-    }> = {}
+    }
+    
+    interface GoldDetailsData {
+      spot: number | null
+      futures: number | null
+      futuresChange: number
+      futuresChangePercent: number
+      spread: number | null
+      spreadStatus: 'normal' | 'warning' | 'critical'
+      spotSource: string
+      isBackwardation: boolean
+    }
+    
+    const marketData: {
+      us10y?: MarketDataItem
+      dxy?: MarketDataItem
+      brent?: MarketDataItem
+      gold?: MarketDataItem
+      goldDetails?: GoldDetailsData
+      goldSource?: string
+      brentSpot?: boolean
+      treasuryRates?: Record<string, number | string>
+      source?: 'live' | 'fallback'
+      timestamp?: string
+      [key: string]: MarketDataItem | GoldDetailsData | string | boolean | Record<string, number | string> | undefined
+    } = {}
     
     try {
       const yahooData = await fetchYahooFinance(symbolList)
@@ -518,7 +543,7 @@ export async function GET() {
       spreadStatus: goldSpreadStatus,
       spotSource: goldSpotSource,
       isBackwardation: goldSpread !== null && goldSpread < 0
-    } as unknown as typeof marketData.gold
+    }
     
     console.log('[v0] Gold Details:', JSON.stringify({
       spot: goldSpotPrice,
@@ -571,7 +596,7 @@ export async function GET() {
     
     // 标记数据源
     if (goldSource !== 'none') {
-      marketData.goldSource = goldSource as unknown as typeof marketData.gold
+      marketData.goldSource = goldSource
     } else {
       console.warn('[v0] No gold price source available')
     }
@@ -589,7 +614,7 @@ export async function GET() {
             lastUpdate: brentData.date
           }
           // 标记为现货数据
-          marketData.brentSpot = true as unknown as typeof marketData.brent
+          marketData.brentSpot = true
         }
       } catch (fredError) {
         console.error('FRED Brent error:', fredError)

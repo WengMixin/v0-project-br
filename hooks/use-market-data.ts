@@ -2,6 +2,17 @@ import useSWR from 'swr'
 
 const fetcher = (url: string) => fetch(url).then(res => res.json())
 
+export interface GoldDetails {
+  spot: number | null
+  futures: number | null
+  futuresChange?: number
+  futuresChangePercent?: number
+  spread: number | null
+  spreadStatus: 'normal' | 'warning' | 'critical'
+  spotSource: string
+  isBackwardation: boolean
+}
+
 export interface MarketDataResponse {
   us10y: {
     value: number
@@ -26,6 +37,20 @@ export interface MarketDataResponse {
     change: number
     changePercent: number
     lastUpdate: string
+  }
+  goldDetails?: GoldDetails
+  goldSource?: string
+  brentSpot?: boolean
+  treasuryRates?: {
+    month1: number
+    month3: number
+    month6: number
+    year1: number
+    year2: number
+    year5: number
+    year10: number
+    year30: number
+    date: string
   }
   source: 'live' | 'fallback'
   timestamp: string

@@ -34,9 +34,6 @@ export function GoldMonitorCard({
   isLoading,
   isLive
 }: GoldMonitorCardProps) {
-  // 调试日志
-  console.log('[v0] GoldMonitorCard received:', { spotPrice, futuresPrice, goldDetails, isLive })
-  
   const isPositive = change > 0
   const isNegative = change < 0
   
@@ -189,7 +186,7 @@ export function GoldMonitorCard({
                       <div className="text-xs leading-relaxed">
                         <span className="font-semibold text-danger">极度危险信号!</span>
                         <span className="text-muted-foreground">
-                          {' '}现货价格反超期货，说明全球央行和机构正在恐慌性抢购实物黄金。
+                          {' '}现货价格反超期货，说明全球央行和机构正在恐慌性��购实物黄金。
                           美元信用体系可能正在发生断裂。建议：清空美股科技股，全仓黄金资产!
                         </span>
                       </div>
