@@ -85,27 +85,30 @@ export function GoldMonitorCard({
           </div>
         ) : (
           <div className="space-y-4">
-            {/* 现货 vs 期货 并排显示 */}
-            <div className="grid grid-cols-2 gap-4">
-              {/* 现货价格 */}
-              <div className="p-3 rounded-lg bg-secondary/50">
-                <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+            {/* 现货 vs 期货 上下结构 */}
+            <div className="space-y-3">
+              {/* 现货价格 - 突出显示 */}
+              <div className="p-4 rounded-lg bg-gradient-to-br from-primary/20 to-secondary/30 border border-primary/30">
+                <div className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
                   现货 XAUUSD
                   <Wifi className="size-3 text-success" />
                 </div>
-                <div className="text-2xl font-bold tabular-nums">
+                <div className="text-5xl font-bold tabular-nums text-primary mb-2">
                   ${spotPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </div>
                 <div className={cn(
-                  'flex items-center gap-1 text-xs font-medium mt-1',
+                  'flex items-center gap-1 text-sm font-medium',
                   isPositive && 'text-success',
                   isNegative && 'text-danger',
                   !isPositive && !isNegative && 'text-muted-foreground'
                 )}>
-                  {isPositive && <TrendingUp className="size-3" />}
-                  {isNegative && <TrendingDown className="size-3" />}
-                  {!isPositive && !isNegative && <Minus className="size-3" />}
+                  {isPositive && <TrendingUp className="size-4" />}
+                  {isNegative && <TrendingDown className="size-4" />}
+                  {!isPositive && !isNegative && <Minus className="size-4" />}
                   <span>{isPositive ? '+' : ''}{changePercent.toFixed(2)}%</span>
+                </div>
+                <div className="text-xs text-muted-foreground mt-2">
+                  全球真实供需的镜像
                 </div>
               </div>
               
