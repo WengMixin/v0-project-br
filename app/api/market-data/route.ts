@@ -20,7 +20,8 @@ interface YahooFinanceResponse {
 }
 
 // Yahoo Finance API (通过代理或直接访问)
-async function fetchYahooFinance(symbols: string[]): Promise<YahooFinanceResponse> {
+// 注意：Yahoo Finance经常从服务器端被屏蔽，所以这个函数可能返回null
+async function fetchYahooFinance(symbols: string[]): Promise<YahooFinanceResponse | null> {
   const symbolsStr = symbols.join(',')
   
   // 尝试多个数据源
@@ -46,7 +47,9 @@ async function fetchYahooFinance(symbols: string[]): Promise<YahooFinanceRespons
     }
   }
   
-  throw new Error('All endpoints failed')
+  // 返回null而不是抛出错误，让调用方处理
+  console.warn('[v0] Yahoo Finance: All endpoints failed, will use fallback data sources')
+  return null
 }
 
 // Tiingo Forex API - 黄金现货价格 (XAUUSD)
@@ -401,7 +404,8 @@ export async function GET() {
     try {
       const yahooData = await fetchYahooFinance(symbolList)
       
-      if (yahooData.quoteResponse?.result) {
+      // 只有当yahooData不为null时才处理
+      if (yahooData && yahooData.quoteResponse?.result) {
         const results = yahooData.quoteResponse.result
         
         for (const [key, symbol] of Object.entries(symbols)) {
