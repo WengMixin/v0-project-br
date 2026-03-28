@@ -241,7 +241,59 @@ export async function GET() {
     })
   }
 
-  // Test GoldAPI for gold spot price
+  // Test Tiingo API for gold spot price (XAUUSD)
+  const tiingoApiKey = process.env.TIINGO_API_KEY
+  if (tiingoApiKey) {
+    const start = Date.now()
+    try {
+      const res = await fetch('https://api.tiingo.com/tiingo/fx/xauusd/top', {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Token ${tiingoApiKey}`
+        }
+      })
+      const latency = Date.now() - start
+      if (res.ok) {
+        const data = await res.json()
+        if (Array.isArray(data) && data.length > 0) {
+          results.push({
+            name: 'Tiingo (黄金现货)',
+            status: 'connected',
+            message: `连接成功，XAUUSD现货: $${data[0].midPrice?.toFixed(2) || 'N/A'}/盎司`,
+            latency
+          })
+        } else {
+          results.push({
+            name: 'Tiingo (黄金现货)',
+            status: 'error',
+            message: '响应格式异常',
+            latency
+          })
+        }
+      } else {
+        results.push({
+          name: 'Tiingo (黄金现货)',
+          status: 'error',
+          message: `API返回错误: ${res.status}`,
+          latency
+        })
+      }
+    } catch (error) {
+      results.push({
+        name: 'Tiingo (黄金现货)',
+        status: 'error',
+        message: `连接失败: ${error instanceof Error ? error.message : 'Unknown error'}`
+      })
+    }
+  } else {
+    results.push({
+      name: 'Tiingo (黄金现货)',
+      status: 'not_configured',
+      message: '未配置 TIINGO_API_KEY (推荐用于黄金现货)'
+    })
+  }
+
+  // Test GoldAPI for gold spot price (备用)
   const goldApiKey = process.env.GOLDAPI_KEY
   if (goldApiKey) {
     const start = Date.now()

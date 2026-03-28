@@ -7,6 +7,7 @@ import { FedStatementsCard } from '@/components/dashboard/fed-statements-card'
 import { CPICard } from '@/components/dashboard/cpi-card'
 import { StrategyTips } from '@/components/dashboard/strategy-tips'
 import { DataSourcesPanel } from '@/components/dashboard/data-sources-panel'
+import { GoldMonitorCard } from '@/components/dashboard/gold-monitor-card'
 import { useMarketData, useTreasuryAuctions, useCPIData } from '@/hooks/use-market-data'
 import {
   getFedStatements,
@@ -212,7 +213,7 @@ export default function MacroMonitorDashboard() {
                   danger: THRESHOLDS.us10y.danger
                 }}
                 chartData={generateChartData(marketData?.us10y?.value || 4.39, 0.01)}
-                description="突破4.5%进入警戒区，科技股和新能源继续杀估值"
+                description="突破4.5%进入警戒区，科技股���新能源继续杀估值"
               />
               
               <IndicatorCard
@@ -244,14 +245,21 @@ export default function MacroMonitorDashboard() {
                 description="油价高企，中海油底仓坚决不动"
               />
               
-              <IndicatorCard
-                indicator={formatIndicator(
-                  '国际黄金',
-                  marketData?.gold
-                )}
-                unit="$/盎司"
-                chartData={generateChartData(marketData?.gold?.value || 3010, 0.008)}
-                description="美债拍卖流拍或美联储软化，黄金直接起飞"
+              <GoldMonitorCard
+                spotPrice={marketData?.gold?.value ?? 0}
+                futuresPrice={(marketData?.goldDetails as { futures?: number })?.futures ?? null}
+                change={marketData?.gold?.change ?? 0}
+                changePercent={marketData?.gold?.changePercent ?? 0}
+                goldDetails={marketData?.goldDetails as {
+                  spot: number | null
+                  futures: number | null
+                  spread: number | null
+                  spreadStatus: 'normal' | 'warning' | 'critical'
+                  spotSource: string
+                  isBackwardation: boolean
+                }}
+                isLoading={isLoading}
+                isLive={marketData?.goldDetails !== undefined}
               />
             </div>
           )}

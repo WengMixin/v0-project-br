@@ -49,6 +49,61 @@ async function fetchYahooFinance(symbols: string[]): Promise<YahooFinanceRespons
   throw new Error('All endpoints failed')
 }
 
+// Tiingo Forex API - 黄金现货价格 (XAUUSD)
+// 文档: https://www.tiingo.com/documentation/forex
+interface TiingoForexResponse {
+  ticker: string
+  quoteTimestamp: string
+  bidPrice: number
+  bidSize: number
+  askPrice: number
+  askSize: number
+  midPrice: number
+}
+
+async function fetchTiingoGoldSpot(apiKey: string): Promise<{
+  price: number
+  bidPrice: number
+  askPrice: number
+  timestamp: string
+} | null> {
+  try {
+    const response = await fetch(
+      'https://api.tiingo.com/tiingo/fx/xauusd/top',
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Token ${apiKey}`
+        },
+        next: { revalidate: 60 }
+      }
+    )
+    
+    if (!response.ok) {
+      console.error('[v0] Tiingo API response not ok:', response.status)
+      return null
+    }
+    
+    const data: TiingoForexResponse[] = await response.json()
+    
+    if (!Array.isArray(data) || data.length === 0) {
+      console.error('[v0] Tiingo API invalid response format')
+      return null
+    }
+    
+    const quote = data[0]
+    return {
+      price: quote.midPrice,
+      bidPrice: quote.bidPrice,
+      askPrice: quote.askPrice,
+      timestamp: quote.quoteTimestamp
+    }
+  } catch (error) {
+    console.error('[v0] Tiingo Gold fetch error:', error)
+    return null
+  }
+}
+
 // MetalpriceAPI - 免费黄金价格备用数据源
 // 注意：Alpha Vantage 免费版不支持 XAU 贵金属查询
 // 文档: https://metalpriceapi.com/documentation
@@ -342,43 +397,118 @@ export async function GET() {
       console.error('Yahoo Finance error:', yahooError)
     }
     
-    // 智能刷新逻辑：黄金价格
-    // GoldAPI每月100次限制，只在定时时间点使用(早8点、下午1点、晚8点)
-    // 其他时间使用 Yahoo Finance GC=F 作为备用（免费无限制）
+    // ========== 黄金价格获取：现货为主，期货为辅 ==========
+    // 现货 (XAUUSD): 反映真实物理供需，是核心监控指标
+    // 期货 (GC=F): 华尔街杠杆资金博弈的结果
+    // 正常情况：期货 > 现货 约 $20-30（利息成本）
+    // 危机信号：现货 > 期货 = Backwardation（贴水），美元信用崩塌前兆
+    
+    const tiingoApiKey = process.env.TIINGO_API_KEY
     const goldApiKey = process.env.GOLDAPI_KEY
-    const metalpriceApiKey = process.env.METALPRICE_API_KEY
     const now = new Date()
     const currentHour = now.getHours()
-    const goldScheduleHours = [8, 13, 20] // 定时刷新时间点
+    const goldScheduleHours = [8, 13, 20] // GoldAPI定时刷新时间点
     
-    // 判断是否在GoldAPI定时刷新时间点（前后1小时内）
+    let goldSpotPrice: number | null = null
+    let goldSpotSource = 'none'
+    let goldFuturesPrice: number | null = null
+    
+    // 保存Yahoo获取的期货价格
+    if (marketData.gold) {
+      goldFuturesPrice = marketData.gold.value
+    }
+    
+    // 策略1: 优先使用 Tiingo API 获取现货价格（推荐）
+    if (tiingoApiKey) {
+      try {
+        const tiingoData = await fetchTiingoGoldSpot(tiingoApiKey)
+        if (tiingoData) {
+          goldSpotPrice = tiingoData.price
+          goldSpotSource = 'tiingo'
+          console.log('[v0] Gold SPOT from Tiingo:', tiingoData.price)
+        }
+      } catch (tiingoError) {
+        console.error('[v0] Tiingo error:', tiingoError)
+      }
+    }
+    
+    // 策略2: 定时使用 GoldAPI 获取现货价格
     const isGoldAPIScheduledTime = goldScheduleHours.some(h => 
       Math.abs(currentHour - h) <= 1
     )
     
-    let goldSource = 'none'
-    
-    // 策略1: 定时时间点使用GoldAPI（最精确）
-    if (isGoldAPIScheduledTime && goldApiKey) {
+    if (goldSpotSource === 'none' && isGoldAPIScheduledTime && goldApiKey) {
       try {
         const goldData = await fetchGoldAPIPrice(goldApiKey)
         if (goldData) {
-          marketData.gold = {
-            value: goldData.price,
-            change: goldData.change,
-            changePercent: goldData.changePercent,
-            lastUpdate: goldData.timestamp
-          }
-          goldSource = 'goldapi'
-          console.log('[v0] Gold price from GoldAPI:', goldData.price)
+          goldSpotPrice = goldData.price
+          goldSpotSource = 'goldapi'
+          console.log('[v0] Gold SPOT from GoldAPI:', goldData.price)
         }
       } catch (goldError) {
         console.error('[v0] GoldAPI error:', goldError)
       }
     }
     
-    // 策略2: 使用MetalpriceAPI作为备用（如果配置了）
-    if (goldSource === 'none' && metalpriceApiKey) {
+    // 策略3: 使用 Yahoo Finance 期货作为后备
+    if (goldSpotSource === 'none') {
+      try {
+        const yahooGold = await fetchYahooGold()
+        if (yahooGold) {
+          goldSpotPrice = yahooGold.price
+          goldSpotSource = 'yahoo_futures'
+          console.log('[v0] Gold FUTURES from Yahoo:', yahooGold.price)
+        }
+      } catch (yahooGoldError) {
+        console.error('[v0] Yahoo Gold error:', yahooGoldError)
+      }
+    }
+    
+    // 计算现货-期货价差 (Contango/Backwardation)
+    let goldSpread: number | null = null
+    let goldSpreadStatus: 'normal' | 'warning' | 'critical' = 'normal'
+    
+    if (goldSpotPrice !== null && goldFuturesPrice !== null) {
+      goldSpread = goldFuturesPrice - goldSpotPrice
+      
+      // 正常: 期货 > 现货 $10-50 (Contango)
+      // 警告: 价差收窄到 < $5
+      // 危机: 现货 > 期货 (Backwardation) - 美元信用崩塌信号!
+      if (goldSpread < 0) {
+        goldSpreadStatus = 'critical' // Backwardation!
+      } else if (goldSpread < 5) {
+        goldSpreadStatus = 'warning'
+      }
+    }
+    
+    // 设置主要黄金数据（以现货为主）
+    if (goldSpotPrice !== null) {
+      const existingGold = marketData.gold
+      marketData.gold = {
+        value: goldSpotPrice,
+        change: existingGold?.change ?? 0,
+        changePercent: existingGold?.changePercent ?? 0,
+        lastUpdate: new Date().toISOString()
+      }
+    }
+    
+    // 添加黄金详细数据
+    marketData.goldDetails = {
+      spot: goldSpotPrice,
+      futures: goldFuturesPrice,
+      spread: goldSpread,
+      spreadStatus: goldSpreadStatus,
+      spotSource: goldSpotSource,
+      isBackwardation: goldSpread !== null && goldSpread < 0
+    } as unknown as typeof marketData.gold
+    
+    // 移除旧的备用逻辑，直接跳到原油获取
+    // 原有的 MetalpriceAPI 备用逻辑已被 Tiingo 替代
+    let goldSource = goldSpotSource
+    
+    // 跳过旧的MetalpriceAPI逻辑
+    const metalpriceApiKey = process.env.METALPRICE_API_KEY
+    if (false && goldSource === 'none' && metalpriceApiKey) {
       try {
         const metalData = await fetchMetalpriceGold(metalpriceApiKey)
         if (metalData) {
@@ -389,7 +519,6 @@ export async function GET() {
             lastUpdate: metalData.timestamp
           }
           goldSource = 'metalprice'
-          console.log('[v0] Gold price from MetalpriceAPI:', metalData.price)
         }
       } catch (metalError) {
         console.error('[v0] MetalpriceAPI error:', metalError)

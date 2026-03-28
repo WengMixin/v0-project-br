@@ -88,8 +88,18 @@ const dataSources: DataSource[] = [
     getKeyUrl: 'https://site.financialmodelingprep.com/developer/docs'
   },
   {
+    name: 'Tiingo',
+    description: '黄金现货XAUUSD实时数据（首选）',
+    features: ['XAUUSD现货价格', '买卖价差', '机构级Forex数据', '微秒级更新'],
+    apiKeyRequired: true,
+    apiKeyEnvVar: 'TIINGO_API_KEY',
+    freeLimit: '500次/天',
+    docsUrl: 'https://www.tiingo.com/documentation/forex',
+    getKeyUrl: 'https://www.tiingo.com/'
+  },
+  {
     name: 'GoldAPI',
-    description: '黄金现货实时价格（推荐）',
+    description: '黄金现货价格（备用，定时刷新）',
     features: ['黄金现货价格', '开盘/收盘价', '最高/最低价', '实时报价'],
     apiKeyRequired: true,
     apiKeyEnvVar: 'GOLDAPI_KEY',
