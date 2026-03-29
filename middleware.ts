@@ -1,8 +1,8 @@
-import { updateSession } from '@/lib/supabase/middleware'
-import { type NextRequest } from 'next/server'
+import { type NextRequest, NextResponse } from 'next/server'
 
 export async function middleware(request: NextRequest) {
-  return await updateSession(request)
+  // 暂时禁用认证，直接放行所有请求
+  return NextResponse.next()
 }
 
 export const config = {
