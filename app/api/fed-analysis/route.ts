@@ -103,17 +103,19 @@ function extractSpeaker(title: string): string {
   return 'FOMC'
 }
 
-// 使用Ollama分析发言内容
+// 使用Ollama代理服务分析发言内容
+// 文档: OLLAMA_PROXY_URL 指向代理服务根地址（如 https://xxx.trycloudflare.com）
 async function analyzeWithOllama(statement: FedStatement): Promise<AnalysisResult | null> {
-  const ollamaUrl = process.env.OLLAMA_BASE_URL
-  const model = process.env.OLLAMA_MODEL || 'llama3.2'
+  const ollamaProxyUrl = process.env.OLLAMA_PROXY_URL
+  const model = process.env.OLLAMA_MODEL || 'lfm2'
+  const authToken = process.env.OLLAMA_AUTH_TOKEN // 可选的鉴权令牌
   
-  if (!ollamaUrl) {
-    console.warn('[v0] OLLAMA_BASE_URL not configured')
+  if (!ollamaProxyUrl) {
+    console.warn('[v0] OLLAMA_PROXY_URL not configured')
     return null
   }
   
-  const prompt = `你是一位专业的美联储政策分析师。请分析以下美联储官员的发言，判断其货币政策立场。
+  const message = `你是一位专业的美联储政策分析师。请分析以下美联储官员的发言，判断其货币政策立场。
 
 发言人：${statement.speaker}
 日期：${statement.date}
@@ -135,27 +137,33 @@ async function analyzeWithOllama(statement: FedStatement): Promise<AnalysisResul
 - 中性信号：数据依赖、需要更多信息、保持观望`
 
   try {
-    const response = await fetch(`${ollamaUrl}/api/generate`, {
+    // 使用代理服务的 /api/chat 端点
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    }
+    
+    // 如果配置了鉴权令牌，添加到请求头
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`
+    }
+    
+    const response = await fetch(`${ollamaProxyUrl}/api/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
-        model,
-        prompt,
-        stream: false,
-        options: {
-          temperature: 0.3,
-          num_predict: 500
-        }
+        message,
+        model
       })
     })
     
     if (!response.ok) {
-      console.error('[v0] Ollama API error:', response.status)
+      console.error('[v0] Ollama Proxy API error:', response.status)
       return null
     }
     
     const data = await response.json()
-    const responseText = data.response || ''
+    // 代理服务返回格式: { model: string, reply: string, raw: object }
+    const responseText = data.reply || ''
     
     // 提取JSON
     const jsonMatch = responseText.match(/\{[\s\S]*\}/)
