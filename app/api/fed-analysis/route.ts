@@ -35,6 +35,8 @@ interface AnalysisResult {
 async function fetchLatestStatements(): Promise<FedStatement[]> {
   const statements: FedStatement[] = []
   
+  console.log('[v0] Fetching Fed statements from official sources...')
+  
   try {
     // 尝试获取美联储新闻发布
     const response = await fetch(
@@ -46,6 +48,8 @@ async function fetchLatestStatements(): Promise<FedStatement[]> {
         next: { revalidate: 1800 } // 缓存30分钟
       }
     )
+    
+    console.log('[v0] Fed API response status:', response.status)
     
     if (response.ok) {
       const data = await response.json()
@@ -251,9 +255,12 @@ function quickAnalysis(statement: FedStatement): AnalysisResult {
 }
 
 export async function GET() {
+  console.log('[v0] Fed Analysis API called')
+  
   try {
     // 检查Redis缓存
     const cacheKey = 'fed:analysis:latest'
+    console.log('[v0] Checking Redis cache...')
     const cached = await redis.get<AnalysisResult[]>(cacheKey)
     
     if (cached && Array.isArray(cached) && cached.length > 0) {
@@ -263,6 +270,7 @@ export async function GET() {
       const sixHoursAgo = Date.now() - 6 * 60 * 60 * 1000
       
       if (analyzedAt > sixHoursAgo) {
+        console.log('[v0] Returning cached analysis')
         return NextResponse.json({
           success: true,
           analyses: cached,
@@ -272,19 +280,27 @@ export async function GET() {
       }
     }
     
+    console.log('[v0] Cache miss or expired, fetching fresh data...')
+    
     // 获取最新声明
     const statements = await fetchLatestStatements()
+    console.log('[v0] Fetched', statements.length, 'statements')
     
     // 分析每条声明
     const analyses: AnalysisResult[] = []
     
     for (const statement of statements.slice(0, 5)) {
+      console.log('[v0] Analyzing statement:', statement.title)
+      
       // 尝试Ollama分析
       let analysis = await analyzeWithOllama(statement)
       
       // 如果Ollama失败，使用快速分析
       if (!analysis) {
+        console.log('[v0] Ollama failed, using quick analysis')
         analysis = quickAnalysis(statement)
+      } else {
+        console.log('[v0] Ollama analysis successful, score:', analysis.score)
       }
       
       analyses.push(analysis)
@@ -292,6 +308,7 @@ export async function GET() {
     
     // 缓存结果（24小时）
     if (analyses.length > 0) {
+      console.log('[v0] Caching', analyses.length, 'analyses')
       await redis.set(cacheKey, analyses, { ex: 86400 })
     }
     
