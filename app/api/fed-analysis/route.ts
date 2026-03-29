@@ -255,34 +255,11 @@ function quickAnalysis(statement: FedStatement): AnalysisResult {
 }
 
 export async function GET() {
-  console.log('[v0] Fed Analysis API called')
+  console.log('[v0] Fed Analysis API called - 无缓存模式')
   
   try {
-    // 检查Redis缓存
-    const cacheKey = 'fed:analysis:latest'
-    console.log('[v0] Checking Redis cache...')
-    const cached = await redis.get<AnalysisResult[]>(cacheKey)
-    
-    if (cached && Array.isArray(cached) && cached.length > 0) {
-      // 检查缓存是否过期（6小时）
-      const latestAnalysis = cached[0]
-      const analyzedAt = new Date(latestAnalysis.analyzedAt).getTime()
-      const sixHoursAgo = Date.now() - 6 * 60 * 60 * 1000
-      
-      if (analyzedAt > sixHoursAgo) {
-        console.log('[v0] Returning cached analysis')
-        return NextResponse.json({
-          success: true,
-          analyses: cached,
-          source: 'cache',
-          timestamp: new Date().toISOString()
-        })
-      }
-    }
-    
-    console.log('[v0] Cache miss or expired, fetching fresh data...')
-    
-    // 获取最新声明
+    // 每次都执行完整流程：RSS -> 爬正文 -> 问大模型
+    console.log('[v0] Step 1: 获取RSS/最新声明...')
     const statements = await fetchLatestStatements()
     console.log('[v0] Fetched', statements.length, 'statements')
     
@@ -290,9 +267,10 @@ export async function GET() {
     const analyses: AnalysisResult[] = []
     
     for (const statement of statements.slice(0, 5)) {
-      console.log('[v0] Analyzing statement:', statement.title)
+      console.log('[v0] Step 2: 分析声明:', statement.title)
       
       // 尝试Ollama分析
+      console.log('[v0] Step 3: 调用Ollama大模型...')
       let analysis = await analyzeWithOllama(statement)
       
       // 如果Ollama失败，使用快速分析
@@ -304,12 +282,6 @@ export async function GET() {
       }
       
       analyses.push(analysis)
-    }
-    
-    // 缓存结果（24小时）
-    if (analyses.length > 0) {
-      console.log('[v0] Caching', analyses.length, 'analyses')
-      await redis.set(cacheKey, analyses, { ex: 86400 })
     }
     
     return NextResponse.json({
