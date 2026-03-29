@@ -10,7 +10,6 @@ import { DataSourcesPanel } from '@/components/dashboard/data-sources-panel'
 import { GoldMonitorCard } from '@/components/dashboard/gold-monitor-card'
 import { useMarketData, useTreasuryAuctions, useCPIData } from '@/hooks/use-market-data'
 import {
-  getFedStatements,
   getCPIData,
   THRESHOLDS
 } from '@/lib/market-data'
@@ -64,8 +63,7 @@ export default function MacroMonitorDashboard() {
     } finally {
       setIsRefreshing(false)
     }
-  }
-  const fedStatements = getFedStatements()
+}
   
   // 使用实时CPI数据或备用数据
   const fallbackCPI = getCPIData()
@@ -268,7 +266,7 @@ export default function MacroMonitorDashboard() {
               isLoading={auctionsLoading}
               isLive={auctionsIsLive}
             />
-            <FedStatementsCard statements={fedStatements} />
+            <FedStatementsCard />
           </div>
         </section>
         
