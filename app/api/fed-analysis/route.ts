@@ -114,6 +114,13 @@ async function analyzeWithOllama(statement: FedStatement): Promise<AnalysisResul
   const model = process.env.OLLAMA_MODEL || 'lfm2'
   const authToken = process.env.OLLAMA_AUTH_TOKEN // 可选的鉴权令牌
   
+  // 调试：显示当前环境变量值
+  console.log('[v0] Ollama Config:', {
+    proxyUrl: ollamaProxyUrl,
+    model,
+    hasAuthToken: !!authToken
+  })
+  
   if (!ollamaProxyUrl) {
     console.warn('[v0] OLLAMA_PROXY_URL not configured')
     return null
