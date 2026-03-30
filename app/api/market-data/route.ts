@@ -621,13 +621,25 @@ export async function GET() {
         const brentData = await brentResponse.json()
         const quote = brentData?.quoteResponse?.result?.[0]
         if (quote) {
+          const brentTime = quote.regularMarketTime || Date.now() / 1000
+          const brentDate = new Date(brentTime * 1000)
+          
           marketData.brent = {
             value: quote.regularMarketPrice || 0,
             change: quote.regularMarketChange || 0,
             changePercent: quote.regularMarketChangePercent || 0,
-            lastUpdate: new Date((quote.regularMarketTime || Date.now() / 1000) * 1000).toISOString()
+            lastUpdate: brentDate.toISOString()
           }
-          console.log('[v0] Brent oil from Yahoo:', quote.regularMarketPrice)
+          
+          console.log('[v0] Brent oil from Yahoo:', {
+            price: quote.regularMarketPrice,
+            date: brentDate.toISOString(),
+            timestamp: brentTime,
+            tradingTime: quote.regularMarketTime,
+            market: quote.market,
+            postMarketPrice: quote.postMarketPrice,
+            postMarketTime: quote.postMarketTime
+          })
         }
       }
     } catch (brentError) {
