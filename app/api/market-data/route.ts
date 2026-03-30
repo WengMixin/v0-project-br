@@ -605,45 +605,24 @@ export async function GET() {
       console.warn('[v0] No gold price source available')
     }
     
-    // 使用Yahoo Finance获取布伦特原油期货价格 (BZ=F)
-    try {
-      const brentResponse = await fetch(
-        'https://query1.finance.yahoo.com/v7/finance/quote?symbols=BZ=F',
-        {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-          },
-          next: { revalidate: 60 }
-        }
-      )
-      
-      if (brentResponse.ok) {
-        const brentData = await brentResponse.json()
-        const quote = brentData?.quoteResponse?.result?.[0]
-        if (quote) {
-          const brentTime = quote.regularMarketTime || Date.now() / 1000
-          const brentDate = new Date(brentTime * 1000)
-          
+    // 使用FRED获取布伦特原油现货价格
+    const fredApiKey = process.env.FRED_API_KEY
+    if (fredApiKey) {
+      try {
+        const brentData = await fetchFREDBrentOil(fredApiKey)
+        if (brentData) {
           marketData.brent = {
-            value: quote.regularMarketPrice || 0,
-            change: quote.regularMarketChange || 0,
-            changePercent: quote.regularMarketChangePercent || 0,
-            lastUpdate: brentDate.toISOString()
+            value: brentData.value,
+            change: brentData.change,
+            changePercent: brentData.changePercent,
+            lastUpdate: brentData.date
           }
-          
-          console.log('[v0] Brent oil from Yahoo:', {
-            price: quote.regularMarketPrice,
-            date: brentDate.toISOString(),
-            timestamp: brentTime,
-            tradingTime: quote.regularMarketTime,
-            market: quote.market,
-            postMarketPrice: quote.postMarketPrice,
-            postMarketTime: quote.postMarketTime
-          })
+          marketData.brentSpot = true
+          console.log('[v0] Brent oil from FRED:', brentData.value, 'date:', brentData.date)
         }
+      } catch (fredError) {
+        console.error('[v0] FRED Brent error:', fredError)
       }
-    } catch (brentError) {
-      console.error('[v0] Yahoo Brent error:', brentError)
     }
     
     // 使用FMP Treasury Rates API获取国债收益率数据

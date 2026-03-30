@@ -178,9 +178,9 @@ export function FedStatementsCard() {
             
             {/* 最新发言分析 */}
             <div className="space-y-3">
-              {analyses.slice(0, 3).map((analysis) => (
+              {analyses.slice(0, 3).map((analysis, index) => (
                 <div
-                  key={analysis.id}
+                  key={analysis.id || `analysis-${index}`}
                   className="p-3 rounded-lg bg-secondary/50 space-y-2"
                 >
                   <div className="flex items-center justify-between">
