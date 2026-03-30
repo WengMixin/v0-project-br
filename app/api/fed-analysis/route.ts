@@ -107,6 +107,95 @@ function extractSpeaker(title: string): string {
   return 'FOMC'
 }
 
+// 生成分析提示词
+function generateAnalysisPrompt(statement: FedStatement): string {
+  return `你是一位专业的美联储政策分析师。请分析以下美联储官员的发言，判断其货币政策立场。
+
+发言人：${statement.speaker}
+日期：${statement.date}
+标题：${statement.title}
+内容：${statement.content}
+
+请按以下JSON格式回复（只返回JSON，不要其他内容）：
+{
+  "stance": "hawkish" 或 "dovish" 或 "neutral",
+  "score": 从-100到+100的数字（-100极度鸽派，+100极度鹰派），
+  "summary": "一句话总结（中文，不超过50字）",
+  "keyPhrases": ["关键短语1", "关键短语2", "关键短语3"],
+  "actionSignal": "对投资者的建议（中文，不超过30字）"
+}
+
+判断标准：
+- 鹰派信号：higher for longer、通胀黏性、劳动力市场强劲、不急于降息
+- 鸽派信号：金融稳定风险、暂缓缩表、关注就业、通胀回落
+- 中性信号：数据依赖、需要更多信息、保持观望`
+}
+
+// 使用DeepSeek API分析发言内容（Ollama备用）
+async function analyzeWithDeepSeek(statement: FedStatement): Promise<AnalysisResult | null> {
+  const apiKey = process.env.DEEPSEEK_API_KEY
+  
+  if (!apiKey) {
+    console.warn('[v0] DEEPSEEK_API_KEY not configured')
+    return null
+  }
+  
+  console.log('[v0] Using DeepSeek API as fallback...')
+  
+  const prompt = generateAnalysisPrompt(statement)
+  
+  try {
+    const response = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: 'deepseek-chat', // 非思考模型
+        messages: [
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 500
+      })
+    })
+    
+    if (!response.ok) {
+      console.error('[v0] DeepSeek API error:', response.status)
+      return null
+    }
+    
+    const data = await response.json()
+    const responseText = data.choices?.[0]?.message?.content || ''
+    
+    // 提取JSON
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) {
+      console.error('[v0] Failed to extract JSON from DeepSeek response')
+      return null
+    }
+    
+    const analysis = JSON.parse(jsonMatch[0])
+    
+    console.log('[v0] DeepSeek analysis successful, score:', analysis.score)
+    
+    return {
+      statement,
+      stance: analysis.stance || 'neutral',
+      score: analysis.score || 0,
+      summary: analysis.summary || '',
+      keyPhrases: analysis.keyPhrases || [],
+      actionSignal: analysis.actionSignal || '',
+      analyzedAt: new Date().toISOString(),
+      source: 'deepseek'
+    }
+  } catch (error) {
+    console.error('[v0] DeepSeek analysis error:', error)
+    return null
+  }
+}
+
 // 使用Ollama代理服务分析发言内容
 // 文档: OLLAMA_PROXY_URL 指向代理服务根地址（如 https://xxx.trycloudflare.com）
 async function analyzeWithOllama(statement: FedStatement): Promise<AnalysisResult | null> {
@@ -122,8 +211,8 @@ async function analyzeWithOllama(statement: FedStatement): Promise<AnalysisResul
   })
   
   if (!ollamaProxyUrl) {
-    console.warn('[v0] OLLAMA_PROXY_URL not configured')
-    return null
+    console.warn('[v0] OLLAMA_PROXY_URL not configured, trying DeepSeek...')
+    return analyzeWithDeepSeek(statement)
   }
   
   const message = `你是一位专业的美联储政策分析师。请分析以下美联储官员的发言，判断其货币政策立场。
@@ -168,8 +257,8 @@ async function analyzeWithOllama(statement: FedStatement): Promise<AnalysisResul
     })
     
     if (!response.ok) {
-      console.error('[v0] Ollama Proxy API error:', response.status)
-      return null
+      console.error('[v0] Ollama Proxy API error:', response.status, '- trying DeepSeek...')
+      return analyzeWithDeepSeek(statement)
     }
     
     const data = await response.json()
@@ -198,8 +287,8 @@ async function analyzeWithOllama(statement: FedStatement): Promise<AnalysisResul
       analyzedAt: new Date().toISOString()
     }
   } catch (error) {
-    console.error('[v0] Ollama analysis error:', error)
-    return null
+    console.error('[v0] Ollama analysis error:', error, '- trying DeepSeek...')
+    return analyzeWithDeepSeek(statement)
   }
 }
 

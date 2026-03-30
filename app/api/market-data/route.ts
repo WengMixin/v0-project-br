@@ -605,24 +605,33 @@ export async function GET() {
       console.warn('[v0] No gold price source available')
     }
     
-    // 优先使用FRED��取布伦特原油现货价格
-    const fredApiKey = process.env.FRED_API_KEY
-    if (fredApiKey) {
-      try {
-        const brentData = await fetchFREDBrentOil(fredApiKey)
-        if (brentData) {
-          marketData.brent = {
-            value: brentData.value,
-            change: brentData.change,
-            changePercent: brentData.changePercent,
-            lastUpdate: brentData.date
-          }
-          // 标记为现货数据
-          marketData.brentSpot = true
+    // 使用Yahoo Finance获取布伦特原油期货价格 (BZ=F)
+    try {
+      const brentResponse = await fetch(
+        'https://query1.finance.yahoo.com/v7/finance/quote?symbols=BZ=F',
+        {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          },
+          next: { revalidate: 60 }
         }
-      } catch (fredError) {
-        console.error('FRED Brent error:', fredError)
+      )
+      
+      if (brentResponse.ok) {
+        const brentData = await brentResponse.json()
+        const quote = brentData?.quoteResponse?.result?.[0]
+        if (quote) {
+          marketData.brent = {
+            value: quote.regularMarketPrice || 0,
+            change: quote.regularMarketChange || 0,
+            changePercent: quote.regularMarketChangePercent || 0,
+            lastUpdate: new Date((quote.regularMarketTime || Date.now() / 1000) * 1000).toISOString()
+          }
+          console.log('[v0] Brent oil from Yahoo:', quote.regularMarketPrice)
+        }
       }
+    } catch (brentError) {
+      console.error('[v0] Yahoo Brent error:', brentError)
     }
     
     // 使用FMP Treasury Rates API获取国债收益率数据
