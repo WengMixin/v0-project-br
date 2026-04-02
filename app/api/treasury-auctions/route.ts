@@ -67,8 +67,7 @@ export async function GET() {
 
 
     // 调用 Treasury Direct API，锁定 10年期国债
-    const url = 'https://www.treasurydirect.gov/TA_WS/securities/search?format=json&securityType=Note&securityTerm=10-Year&days=180'
-
+    const url = `https://www.treasurydirect.gov/TA_WS/securities/search?format=json&securityType=Note&days=365&_t=${Date.now()}`
 
     // 明确设置 cache: 'no-store'，确保每次拿到最新鲜的开标结果
     const response = await fetch(url, { cache: 'no-store' })
@@ -90,12 +89,32 @@ export async function GET() {
       }, { status: 404 })
     }
 
-    // 修复2：过滤区分出“已完成”的拍卖和“尚未开标的预告”
-    const completedAuctions = data.filter(a => a.bidToCoverRatio && parseFloat(a.bidToCoverRatio) > 0)
+    // 🌟 核心修复：把 10年期新发、续发（9年11个月、9年10个月）全部提取出来
+    const tenYearData = data.filter((a) =>
+      a.securityTerm === '10-Year' ||
+      a.securityTerm === '9-Year 11-Month' ||
+      a.securityTerm === '9-Year 10-Month'
+    )
+
+    if (!tenYearData || tenYearData.length === 0) {
+      return NextResponse.json({
+        success: false,
+        message: '暂无拍卖数据',
+        auctions: [],
+        evaluation: null
+      }, { status: 404 })
+    }
+
+    // 过滤出“已完成”的拍卖（必须用 tenYearData 来过滤，而不是原始的 data）
+    const completedAuctions = tenYearData.filter(a => a.bidToCoverRatio && parseFloat(a.bidToCoverRatio) > 0)
+
+
 
     if (completedAuctions.length === 0) {
       throw new Error('近期没有找到已完成的拍卖数据')
     }
+
+
 
     // 取最新的一期开标结果
     const latestAuction = completedAuctions[0]
