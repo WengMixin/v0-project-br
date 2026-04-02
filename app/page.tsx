@@ -17,10 +17,17 @@ import type { CPIData } from '@/lib/market-data'
 import { Spinner } from '@/components/ui/spinner'
 import { AlertCircle, RefreshCw, Wifi, WifiOff, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useSWRConfig } from 'swr' // 新增引入
 
 export default function MacroMonitorDashboard() {
   const [lastUpdateTime, setLastUpdateTime] = useState<string | null>(null)
+  // 引入全局 mutate 函数，用于清理缓存
+  const { mutate: globalMutate } = useSWRConfig()
+
+  // 用于记录长按的定时器
+  const pressTimer = useRef<NodeJS.Timeout | null>(null)
+
 
   useEffect(() => {
     setLastUpdateTime(new Date().toLocaleDateString('zh-CN', {
@@ -64,6 +71,40 @@ export default function MacroMonitorDashboard() {
       setIsRefreshing(false)
     }
   }
+
+  // 2. 长按触发的【强制核弹级刷新】
+  const handleForceRefresh = async () => {
+    setIsRefreshing(true)
+    try {
+      // 遍历清除所有以 /api/ 开头的 SWR 缓存，强制重新请求后端
+      await globalMutate(
+        (key) => typeof key === 'string' && key.startsWith('/api/'),
+        undefined,
+        { revalidate: true }
+      )
+      setLastUpdateTime(new Date().toLocaleDateString('zh-CN', {
+        year: 'numeric', month: 'long', day: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      }) + ' (强制刷新)')
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
+
+  // 3. 长按事件监听器
+  const handlePointerDown = () => {
+    // 设置 800ms 的长按触发阈值
+    pressTimer.current = setTimeout(() => {
+      handleForceRefresh()
+      // 可以的话在这里加个 toast 提示：toast.success("已触发强制刷新")
+    }, 800)
+  }
+
+  const handlePointerUp = () => {
+    // 鼠标/手指抬起时清除定时器，如果是短按，定时器会被取消，不会触发强制刷新
+    if (pressTimer.current) clearTimeout(pressTimer.current)
+  }
+
 
   // 导出数据为 Markdown 报告
   const handleExportReport = () => {
@@ -231,6 +272,9 @@ export default function MacroMonitorDashboard() {
               variant="ghost"
               size="sm"
               onClick={() => refresh()}
+              onPointerDown={handlePointerDown} // 按下开始计时
+              onPointerUp={handlePointerUp} // 抬起停止计时
+              onPointerLeave={handlePointerUp} // 移出按钮范围也停止计时
               disabled={isLoading}
               className="h-7 text-xs"
             >
