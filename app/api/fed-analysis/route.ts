@@ -31,6 +31,36 @@ interface AnalysisResult {
   analyzedAt: string
 }
 
+function buildAnalysisResult(
+  statement: FedStatement,
+  analysis: {
+    stance?: string
+    score?: unknown
+    summary?: string
+    keyPhrases?: unknown
+    actionSignal?: string
+  }
+): AnalysisResult {
+  const stanceRaw = analysis.stance
+  const stance: AnalysisResult['stance'] =
+    stanceRaw === 'hawkish' || stanceRaw === 'dovish' || stanceRaw === 'neutral'
+      ? stanceRaw
+      : 'neutral'
+
+  return {
+    id: statement.id,
+    date: statement.date,
+    speaker: statement.speaker,
+    title: statement.title,
+    stance,
+    score: typeof analysis.score === 'number' ? analysis.score : 0,
+    summary: analysis.summary || '分析中...',
+    keyPhrases: Array.isArray(analysis.keyPhrases) ? analysis.keyPhrases : [],
+    actionSignal: analysis.actionSignal || '继续观望',
+    analyzedAt: new Date().toISOString(),
+  }
+}
+
 // 从美联储官网抓取最新声明/演讲
 async function fetchLatestStatements(): Promise<FedStatement[]> {
   const statements: FedStatement[] = []
@@ -131,7 +161,7 @@ function generateAnalysisPrompt(statement: FedStatement): string {
 - 中性信号：数据依赖、需要更多信息、保持观望`
 }
 
-// 使用DeepSeek API分析发言内容（Ollama备用）
+// 使用DeepSeek API分析发言内容
 async function analyzeWithDeepSeek(statement: FedStatement): Promise<AnalysisResult | null> {
   const apiKey = process.env.DEEPSEEK_API_KEY
   
@@ -140,7 +170,7 @@ async function analyzeWithDeepSeek(statement: FedStatement): Promise<AnalysisRes
     return null
   }
   
-  console.log('[v0] Using DeepSeek API as fallback...')
+  console.log('[v0] Using DeepSeek API...')
   
   const prompt = generateAnalysisPrompt(statement)
   
@@ -180,16 +210,7 @@ async function analyzeWithDeepSeek(statement: FedStatement): Promise<AnalysisRes
     
     console.log('[v0] DeepSeek analysis successful, score:', analysis.score)
     
-    return {
-      statement,
-      stance: analysis.stance || 'neutral',
-      score: analysis.score || 0,
-      summary: analysis.summary || '',
-      keyPhrases: analysis.keyPhrases || [],
-      actionSignal: analysis.actionSignal || '',
-      analyzedAt: new Date().toISOString(),
-      source: 'deepseek'
-    }
+    return buildAnalysisResult(statement, analysis)
   } catch (error) {
     console.error('[v0] DeepSeek analysis error:', error)
     return null
@@ -198,7 +219,11 @@ async function analyzeWithDeepSeek(statement: FedStatement): Promise<AnalysisRes
 
 // 使用Ollama代理服务分析发言内容
 // 文档: OLLAMA_PROXY_URL 指向代理服务根地址（如 https://xxx.trycloudflare.com）
-async function analyzeWithOllama(statement: FedStatement): Promise<AnalysisResult | null> {
+async function analyzeWithOllama(
+  statement: FedStatement,
+  options?: { skipDeepSeekFallback?: boolean }
+): Promise<AnalysisResult | null> {
+  const skipDeepSeekFallback = options?.skipDeepSeekFallback ?? false
   const ollamaProxyUrl = process.env.OLLAMA_PROXY_URL
   const model = process.env.OLLAMA_MODEL || 'lfm2'
   const authToken = process.env.OLLAMA_AUTH_TOKEN // 可选的鉴权令牌
@@ -211,7 +236,8 @@ async function analyzeWithOllama(statement: FedStatement): Promise<AnalysisResul
   })
   
   if (!ollamaProxyUrl) {
-    console.warn('[v0] OLLAMA_PROXY_URL not configured, trying DeepSeek...')
+    console.warn('[v0] OLLAMA_PROXY_URL not configured' + (skipDeepSeekFallback ? '' : ', trying DeepSeek...'))
+    if (skipDeepSeekFallback) return null
     return analyzeWithDeepSeek(statement)
   }
   
@@ -257,7 +283,12 @@ async function analyzeWithOllama(statement: FedStatement): Promise<AnalysisResul
     })
     
     if (!response.ok) {
-      console.error('[v0] Ollama Proxy API error:', response.status, '- trying DeepSeek...')
+      console.error(
+        '[v0] Ollama Proxy API error:',
+        response.status,
+        skipDeepSeekFallback ? '' : '- trying DeepSeek...'
+      )
+      if (skipDeepSeekFallback) return null
       return analyzeWithDeepSeek(statement)
     }
     
@@ -274,20 +305,10 @@ async function analyzeWithOllama(statement: FedStatement): Promise<AnalysisResul
     
     const analysis = JSON.parse(jsonMatch[0])
     
-    return {
-      id: statement.id,
-      date: statement.date,
-      speaker: statement.speaker,
-      title: statement.title,
-      stance: analysis.stance || 'neutral',
-      score: typeof analysis.score === 'number' ? analysis.score : 0,
-      summary: analysis.summary || '分析中...',
-      keyPhrases: Array.isArray(analysis.keyPhrases) ? analysis.keyPhrases : [],
-      actionSignal: analysis.actionSignal || '继续观望',
-      analyzedAt: new Date().toISOString()
-    }
+    return buildAnalysisResult(statement, analysis)
   } catch (error) {
-    console.error('[v0] Ollama analysis error:', error, '- trying DeepSeek...')
+    console.error('[v0] Ollama analysis error:', error, skipDeepSeekFallback ? '' : '- trying DeepSeek...')
+    if (skipDeepSeekFallback) return null
     return analyzeWithDeepSeek(statement)
   }
 }
@@ -350,9 +371,12 @@ function quickAnalysis(statement: FedStatement): AnalysisResult {
   }
 }
 
-export async function GET() {
-  console.log('[v0] Fed Analysis API called - 无缓存模式')
-  
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url)
+  const preferredModel = searchParams.get('preferredModel') || 'ollama'
+
+  console.log(`[v0] Fed Analysis API called - 模型偏好: ${preferredModel}`)
+
   try {
     // 每次都执行完整流程：RSS -> 爬正文 -> 问大模型
     console.log('[v0] Step 1: 获取RSS/最新声明...')
@@ -365,16 +389,21 @@ export async function GET() {
     for (const statement of statements.slice(0, 5)) {
       console.log('[v0] Step 2: 分析声明:', statement.title)
       
-      // 尝试Ollama分析
-      console.log('[v0] Step 3: 调用Ollama大模型...')
-      let analysis = await analyzeWithOllama(statement)
-      
-      // 如果Ollama失败，使用快速分析
+      let analysis: AnalysisResult | null = null
+
+      if (preferredModel === 'deepseek') {
+        console.log('[v0] Step 3: 调用 DeepSeek 大模型...')
+        analysis = await analyzeWithDeepSeek(statement)
+      } else {
+        console.log('[v0] Step 3: 调用 Ollama 大模型...')
+        analysis = await analyzeWithOllama(statement, { skipDeepSeekFallback: true })
+      }
+
       if (!analysis) {
-        console.log('[v0] Ollama failed, using quick analysis')
+        console.log('[v0] 模型调用失败，执行快速分析')
         analysis = quickAnalysis(statement)
       } else {
-        console.log('[v0] Ollama analysis successful, score:', analysis.score)
+        console.log('[v0] 分析成功, score:', analysis.score)
       }
       
       analyses.push(analysis)
