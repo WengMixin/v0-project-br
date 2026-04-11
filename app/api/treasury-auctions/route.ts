@@ -64,30 +64,61 @@ function evaluateAuction(bidToCover: number, dealerRatio: number): AuctionEvalua
 
 export async function GET() {
   try {
+
+
     // 调用 Treasury Direct API，锁定 10年期国债
-    const url = 'https://www.treasurydirect.gov/TA_WS/securities/search?format=json&securityType=Note&securityTerm=10-Year'
-    
+    const url = `https://www.treasurydirect.gov/TA_WS/securities/search?format=json&securityType=Note&days=365&_t=${Date.now()}`
+
     // 明确设置 cache: 'no-store'，确保每次拿到最新鲜的开标结果
     const response = await fetch(url, { cache: 'no-store' })
-    
+
     if (!response.ok) {
       throw new Error(`Treasury Direct API 请求失败: ${response.status}`)
     }
-    
+
+
+
     const data: TreasuryDirectAuction[] = await response.json()
-    
+
     if (!data || data.length === 0) {
-      return NextResponse.json({ 
-        success: false, 
+      return NextResponse.json({
+        success: false,
         message: '暂无拍卖数据',
         auctions: [],
         evaluation: null
       }, { status: 404 })
     }
-    
+
+    // 🌟 核心修复：把 10年期新发、续发（9年11个月、9年10个月）全部提取出来
+    const tenYearData = data.filter((a) =>
+      a.securityTerm === '10-Year' ||
+      a.securityTerm === '9-Year 11-Month' ||
+      a.securityTerm === '9-Year 10-Month'
+    )
+
+    if (!tenYearData || tenYearData.length === 0) {
+      return NextResponse.json({
+        success: false,
+        message: '暂无拍卖数据',
+        auctions: [],
+        evaluation: null
+      }, { status: 404 })
+    }
+
+    // 过滤出“已完成”的拍卖（必须用 tenYearData 来过滤，而不是原始的 data）
+    const completedAuctions = tenYearData.filter(a => a.bidToCoverRatio && parseFloat(a.bidToCoverRatio) > 0)
+
+
+
+    if (completedAuctions.length === 0) {
+      throw new Error('近期没有找到已完成的拍卖数据')
+    }
+
+
+
     // 取最新的一期开标结果
-    const latestAuction = data[0]
-    
+    const latestAuction = completedAuctions[0]
+
     // 提取核心数据
     const bidToCover = latestAuction.bidToCoverRatio ? parseFloat(latestAuction.bidToCoverRatio) : null
     const highYield = latestAuction.highYield ? parseFloat(latestAuction.highYield) : null
@@ -95,33 +126,33 @@ export async function GET() {
     const primaryDealerAccepted = latestAuction.primaryDealerAccepted ? parseFloat(latestAuction.primaryDealerAccepted) : null
     const directBidderAccepted = latestAuction.directBidderAccepted ? parseFloat(latestAuction.directBidderAccepted) : null
     const indirectBidderAccepted = latestAuction.indirectBidderAccepted ? parseFloat(latestAuction.indirectBidderAccepted) : null
-    
+
     // 处理所有近期拍卖数据
-    const auctions = data.slice(0, 10).map((auction: TreasuryDirectAuction) => {
+    const auctions = completedAuctions.slice(0, 10).map((auction: TreasuryDirectAuction) => {
       const btc = auction.bidToCoverRatio ? parseFloat(auction.bidToCoverRatio) : null
       const total = auction.totalAccepted ? parseFloat(auction.totalAccepted) : null
       const dealer = auction.primaryDealerAccepted ? parseFloat(auction.primaryDealerAccepted) : null
       const direct = auction.directBidderAccepted ? parseFloat(auction.directBidderAccepted) : null
       const indirect = auction.indirectBidderAccepted ? parseFloat(auction.indirectBidderAccepted) : null
-      
+
       // 计算华尔街接盘比例
       const dealerRatio = (total && dealer) ? (dealer / total) * 100 : null
-      
+
       // 计算各类买家比例
       const directRatio = (total && direct) ? (direct / total) * 100 : null
       const indirectRatio = (total && indirect) ? (indirect / total) * 100 : null
-      
+
       // 评估状态
       let status: 'normal' | 'weak' | 'danger' = 'normal'
       let alertLevel: AlertLevel = 'NORMAL'
-      
+
       if (btc !== null && dealerRatio !== null) {
         const eval_ = evaluateAuction(btc, dealerRatio)
         alertLevel = eval_.alertLevel
         if (alertLevel === 'CRITICAL') status = 'danger'
         else if (alertLevel === 'WARNING') status = 'weak'
       }
-      
+
       return {
         date: auction.auctionDate,
         type: `${auction.securityTerm} ${auction.securityType}`,
@@ -137,7 +168,7 @@ export async function GET() {
         tail: dealerRatio && dealerRatio > 15 ? (dealerRatio - 10) / 5 : 0.5
       }
     }).filter((a: { bidToCover: number }) => a.bidToCover > 0)
-    
+
     // 如果最新数据还不完整（预告期），返回提示
     if (!bidToCover || !totalAccepted || !primaryDealerAccepted) {
       return NextResponse.json({
@@ -154,15 +185,15 @@ export async function GET() {
         timestamp: new Date().toISOString()
       })
     }
-    
+
     // 计算华尔街接盘比例
     const dealerRatio = (primaryDealerAccepted / totalAccepted) * 100
     const directRatio = directBidderAccepted ? (directBidderAccepted / totalAccepted) * 100 : 0
     const indirectRatio = indirectBidderAccepted ? (indirectBidderAccepted / totalAccepted) * 100 : 0
-    
+
     // 宏观裁判引擎：自动打分评判
     const evaluation = evaluateAuction(bidToCover, dealerRatio)
-    
+
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
@@ -190,7 +221,7 @@ export async function GET() {
       auctions,
       // 汇总统计
       summary: {
-        avgBidToCover: auctions.length > 0 
+        avgBidToCover: auctions.length > 0
           ? (auctions.reduce((sum: number, a: { bidToCover: number }) => sum + a.bidToCover, 0) / auctions.length).toFixed(2)
           : '0',
         hasWarning: auctions.some((a: { alertLevel: AlertLevel }) => a.alertLevel !== 'NORMAL'),
@@ -199,10 +230,10 @@ export async function GET() {
         totalAuctions: auctions.length
       }
     })
-    
+
   } catch (error) {
     console.error('Treasury API error:', error)
-    
+
     // 返回模拟数据作为备用
     return NextResponse.json({
       success: false,
