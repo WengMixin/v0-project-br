@@ -60,6 +60,16 @@ const dataSources: DataSource[] = [
     getKeyUrl: 'https://fred.stlouisfed.org/docs/api/api_key.html'
   },
   {
+    name: 'Trading Economics API',
+    description: '油运雷达 BDTI 等商品快照（可选，优于页面解析）',
+    features: ['BDTI 点位与涨跌幅', 'markets/commodities JSON'],
+    apiKeyRequired: true,
+    apiKeyEnvVar: 'TRADINGECONOMICS_API_KEY',
+    freeLimit: '按订阅计费',
+    docsUrl: 'https://docs.tradingeconomics.com/markets/snapshot/',
+    getKeyUrl: 'https://tradingeconomics.com/api/'
+  },
+  {
     name: 'Alpha Vantage',
     description: '股票、外汇数据（注：免费版不支持黄金XAU）',
     features: ['外汇汇率', '股票数据', '技术指标'],
