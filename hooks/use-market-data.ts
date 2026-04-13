@@ -1,4 +1,5 @@
 import useSWR from 'swr'
+import type { ShippingDataPayload } from '@/lib/shipping-data'
 
 const fetcher = (url: string) => fetch(url).then(res => res.json())
 
@@ -248,5 +249,23 @@ export function useFedAnalysis(preferredModel: 'ollama' | 'deepseek' = 'ollama')
     refresh: mutate,
     source: data?.source,
     success: data?.success,
+  }
+}
+
+export function useShippingData() {
+  const { data, error, isLoading, mutate } = useSWR<ShippingDataPayload>(
+    '/api/shipping-data',
+    fetcher,
+    {
+      revalidateOnFocus: false,
+      dedupingInterval: 300000,
+    }
+  )
+
+  return {
+    data,
+    isLoading,
+    isError: error,
+    refresh: mutate,
   }
 }

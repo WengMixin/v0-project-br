@@ -8,7 +8,8 @@ import { CPICard } from '@/components/dashboard/cpi-card'
 import { StrategyTips } from '@/components/dashboard/strategy-tips'
 import { DataSourcesPanel } from '@/components/dashboard/data-sources-panel'
 import { GoldMonitorCard } from '@/components/dashboard/gold-monitor-card'
-import { useMarketData, useTreasuryAuctions, useCPIData } from '@/hooks/use-market-data'
+import { ShippingRadarCard } from '@/components/dashboard/shipping-radar-card'
+import { useMarketData, useTreasuryAuctions, useCPIData, useShippingData } from '@/hooks/use-market-data'
 import {
   getCPIData,
   THRESHOLDS
@@ -48,6 +49,12 @@ export default function MacroMonitorDashboard() {
     refresh: refreshAuctions
   } = useTreasuryAuctions()
   const { data: cpiDataLive, isLoading: cpiLoading, isLive: cpiIsLive, refresh: refreshCPI } = useCPIData()
+  const {
+    data: shippingData,
+    isLoading: shippingLoading,
+    isError: shippingError,
+    refresh: refreshShipping,
+  } = useShippingData()
 
   const [isRefreshing, setIsRefreshing] = useState(false)
 
@@ -58,7 +65,8 @@ export default function MacroMonitorDashboard() {
       await Promise.all([
         refresh(),
         refreshAuctions(),
-        refreshCPI()
+        refreshCPI(),
+        refreshShipping(),
       ])
       setLastUpdateTime(new Date().toLocaleDateString('zh-CN', {
         year: 'numeric',
@@ -374,6 +382,14 @@ export default function MacroMonitorDashboard() {
               isLive={auctionsIsLive}
             />
             <FedStatementsCard />
+          </div>
+          <div className="mt-4">
+            <ShippingRadarCard
+              data={shippingData}
+              isLoading={shippingLoading}
+              isError={!!shippingError}
+              onRefresh={() => refreshShipping()}
+            />
           </div>
         </section>
 
