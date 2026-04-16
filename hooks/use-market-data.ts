@@ -1,5 +1,4 @@
 import useSWR from 'swr'
-import type { ShippingDataPayload } from '@/lib/shipping-data'
 
 const fetcher = (url: string) => fetch(url).then(res => res.json())
 
@@ -209,63 +208,5 @@ export function useCPIData() {
     isError: error,
     isLive: data?.data?.isLive ?? false,
     refresh: mutate
-  }
-}
-
-export interface FedAnalysisItem {
-  id: string
-  date: string
-  speaker: string
-  title: string
-  stance: 'hawkish' | 'dovish' | 'neutral'
-  score: number
-  summary: string
-  keyPhrases: string[]
-  actionSignal: string
-  analyzedAt: string
-}
-
-export interface FedAnalysisApiResponse {
-  success: boolean
-  analyses: FedAnalysisItem[]
-  source: string
-  timestamp: string
-}
-
-export function useFedAnalysis(preferredModel: 'ollama' | 'deepseek' = 'ollama') {
-  const { data, error, isLoading, mutate } = useSWR<FedAnalysisApiResponse>(
-    `/api/fed-analysis?preferredModel=${preferredModel}`,
-    fetcher,
-    {
-      revalidateOnFocus: false,
-      dedupingInterval: 60000,
-    }
-  )
-
-  return {
-    analyses: data?.analyses ?? [],
-    isLoading,
-    isError: error,
-    refresh: mutate,
-    source: data?.source,
-    success: data?.success,
-  }
-}
-
-export function useShippingData() {
-  const { data, error, isLoading, mutate } = useSWR<ShippingDataPayload>(
-    '/api/shipping-data',
-    fetcher,
-    {
-      revalidateOnFocus: false,
-      dedupingInterval: 300000,
-    }
-  )
-
-  return {
-    data,
-    isLoading,
-    isError: error,
-    refresh: mutate,
   }
 }
