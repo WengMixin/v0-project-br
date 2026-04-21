@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 60
+export const maxDuration = 120
 
 type ChatRole = 'user' | 'assistant'
 
@@ -41,8 +41,42 @@ function buildProxyMessage(messages: ChatMessage[]): string {
     .join('\n\n')
 }
 
+function clampInt(n: unknown, min: number, max: number, fallback: number): number {
+  const v = typeof n === 'number' ? n : typeof n === 'string' ? parseInt(n, 10) : NaN
+  if (!Number.isFinite(v)) return fallback
+  return Math.min(max, Math.max(min, Math.floor(v)))
+}
+
+interface ToolsSuccessBody {
+  reply?: string
+  used_tools?: string[]
+  meta?: {
+    model?: string
+    latency_ms?: number
+    search_count?: number
+    degraded?: boolean
+    degraded_reason?: string
+    [key: string]: unknown
+  }
+  error?: string | null
+  request_id?: string
+}
+
+function extractToolsErrorMessage(status: number, raw: unknown): string {
+  if (raw && typeof raw === 'object') {
+    const d = (raw as { detail?: unknown }).detail
+    if (d && typeof d === 'object' && 'error' in d) {
+      const err = (d as { error?: string }).error
+      if (typeof err === 'string') return err
+    }
+    const err = (raw as { error?: string }).error
+    if (typeof err === 'string') return err
+  }
+  return `工具接口返回 ${status}`
+}
+
 export async function POST(request: Request) {
-  const ollamaProxyUrl = process.env.OLLAMA_PROXY_URL
+  const ollamaProxyUrl = process.env.OLLAMA_PROXY_URL?.replace(/\/$/, '')
   const model = process.env.OLLAMA_MODEL || 'lfm2'
   const authToken = process.env.OLLAMA_AUTH_TOKEN
 
@@ -53,9 +87,9 @@ export async function POST(request: Request) {
     )
   }
 
-  let body: unknown
+  let body: Record<string, unknown>
   try {
-    body = await request.json()
+    body = (await request.json()) as Record<string, unknown>
   } catch {
     return NextResponse.json({ error: '无效的 JSON 请求体', reply: null }, { status: 400 })
   }
@@ -74,10 +108,73 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: '消息过长', reply: null }, { status: 400 })
   }
 
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (authToken) headers.Authorization = `Bearer ${authToken}`
+  const useWeb = body.useWeb === true
+  const maxResults = clampInt(body.max_results, 1, 10, 5)
+  const timeoutMs = clampInt(body.timeout_ms, 1000, 120_000, 90_000)
 
   try {
+    if (useWeb) {
+      const url = `${ollamaProxyUrl}/api/chat-with-tools`
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify({
+          message: combined,
+          model,
+          use_web: true,
+          max_results: maxResults,
+          timeout_ms: timeoutMs,
+        }),
+      })
+
+      const text = await response.text()
+      let data: ToolsSuccessBody | Record<string, unknown> = {}
+      try {
+        data = text ? (JSON.parse(text) as ToolsSuccessBody) : {}
+      } catch {
+        return NextResponse.json(
+          { error: '工具接口返回非 JSON', reply: null, details: text.slice(0, 300) },
+          { status: 502 }
+        )
+      }
+
+      if (!response.ok) {
+        return NextResponse.json(
+          {
+            error: extractToolsErrorMessage(response.status, data),
+            reply: null,
+            mode: 'chat-with-tools',
+            request_id: typeof (data as ToolsSuccessBody).request_id === 'string' ? (data as ToolsSuccessBody).request_id : undefined,
+          },
+          { status: response.status >= 400 && response.status < 600 ? response.status : 502 }
+        )
+      }
+
+      const typed = data as ToolsSuccessBody
+      if (typed.error) {
+        return NextResponse.json({
+          error: typed.error,
+          reply: null,
+          mode: 'chat-with-tools',
+          request_id: typed.request_id,
+        })
+      }
+
+      const reply = typeof typed.reply === 'string' ? typed.reply.trim() : ''
+      return NextResponse.json({
+        reply: reply || '（空回复）',
+        model: typed.meta?.model ?? model,
+        mode: 'chat-with-tools' as const,
+        used_tools: typed.used_tools ?? [],
+        meta: typed.meta ?? null,
+        request_id: typed.request_id ?? null,
+        error: null,
+      })
+    }
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json; charset=utf-8' }
+    if (authToken) headers.Authorization = `Bearer ${authToken}`
+
     const response = await fetch(`${ollamaProxyUrl}/api/chat`, {
       method: 'POST',
       headers,
@@ -85,23 +182,28 @@ export async function POST(request: Request) {
     })
 
     if (!response.ok) {
-      const text = await response.text().catch(() => '')
+      const errText = await response.text().catch(() => '')
       return NextResponse.json(
         {
           error: `Ollama 代理返回 ${response.status}`,
-          details: text.slice(0, 500),
+          details: errText.slice(0, 500),
           reply: null,
+          mode: 'chat' as const,
         },
         { status: 502 }
       )
     }
 
-    const data = (await response.json()) as { reply?: string; model?: string; raw?: unknown }
-    const reply = typeof data.reply === 'string' ? data.reply : ''
+    const data = (await response.json()) as { reply?: string; model?: string }
+    const reply = typeof data.reply === 'string' ? data.reply.trim() : ''
 
     return NextResponse.json({
-      reply,
+      reply: reply || '（空回复）',
       model: data.model ?? model,
+      mode: 'chat' as const,
+      used_tools: [] as string[],
+      meta: null,
+      request_id: null as string | null,
       error: null,
     })
   } catch (e) {

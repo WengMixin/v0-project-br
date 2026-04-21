@@ -24,7 +24,7 @@ interface RefreshStatus {
 interface DashboardHeaderProps {
   onRefresh?: () => void
   isRefreshing?: boolean
-  /** e.g. Ollama-only chat trigger */
+  /** e.g. Ollama chat trigger */
   extraActions?: ReactNode
 }
 
@@ -207,7 +207,7 @@ export function DashboardHeader({ onRefresh, isRefreshing = false, extraActions 
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-            
+
             {extraActions}
 
             <Button 
