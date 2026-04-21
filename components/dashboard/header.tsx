@@ -24,6 +24,7 @@ interface RefreshStatus {
 interface DashboardHeaderProps {
   onRefresh?: () => void
   isRefreshing?: boolean
+  /** e.g. Ollama chat trigger */
   extraActions?: ReactNode
 }
 

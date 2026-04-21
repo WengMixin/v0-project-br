@@ -16,15 +16,22 @@ import {
 } from '@/lib/market-data'
 import type { CPIData } from '@/lib/market-data'
 import { Spinner } from '@/components/ui/spinner'
-import { AlertCircle, RefreshCw, Wifi, WifiOff } from 'lucide-react'
+import { AlertCircle, RefreshCw, Wifi, WifiOff, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useSWRConfig } from 'swr' // 新增引入
 
 export default function MacroMonitorDashboard() {
   const [lastUpdateTime, setLastUpdateTime] = useState<string | null>(null)
-  
+  // 引入全局 mutate 函数，用于清理缓存
+  const { mutate: globalMutate } = useSWRConfig()
+
+  // 用于记录长按的定时器
+  const pressTimer = useRef<NodeJS.Timeout | null>(null)
+
+
   useEffect(() => {
-    setLastUpdateTime(new Date().toLocaleDateString('zh-CN', { 
+    setLastUpdateTime(new Date().toLocaleDateString('zh-CN', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
@@ -33,18 +40,18 @@ export default function MacroMonitorDashboard() {
     }))
   }, [])
   const { data: marketData, isLoading, isError, refresh, isLive } = useMarketData()
-  const { 
-    auctions, 
-    latestAuction, 
-    evaluation: auctionEvaluation, 
-    isLoading: auctionsLoading, 
+  const {
+    auctions,
+    latestAuction,
+    evaluation: auctionEvaluation,
+    isLoading: auctionsLoading,
     isLive: auctionsIsLive,
-    refresh: refreshAuctions 
+    refresh: refreshAuctions
   } = useTreasuryAuctions()
   const { data: cpiDataLive, isLoading: cpiLoading, isLive: cpiIsLive, refresh: refreshCPI } = useCPIData()
-  
+
   const [isRefreshing, setIsRefreshing] = useState(false)
-  
+
   // 统一刷新所有数据
   const handleRefreshAll = async () => {
     setIsRefreshing(true)
@@ -54,7 +61,7 @@ export default function MacroMonitorDashboard() {
         refreshAuctions(),
         refreshCPI()
       ])
-      setLastUpdateTime(new Date().toLocaleDateString('zh-CN', { 
+      setLastUpdateTime(new Date().toLocaleDateString('zh-CN', {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
@@ -64,8 +71,92 @@ export default function MacroMonitorDashboard() {
     } finally {
       setIsRefreshing(false)
     }
-}
-  
+  }
+
+  // 2. 长按触发的【强制核弹级刷新】
+  const handleForceRefresh = async () => {
+    setIsRefreshing(true)
+    try {
+      // 遍历清除所有以 /api/ 开头的 SWR 缓存，强制重新请求后端
+      await globalMutate(
+        (key) => typeof key === 'string' && key.startsWith('/api/'),
+        undefined,
+        { revalidate: true }
+      )
+      setLastUpdateTime(new Date().toLocaleDateString('zh-CN', {
+        year: 'numeric', month: 'long', day: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      }) + ' (强制刷新)')
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
+
+  // 3. 长按事件监听器
+  const handlePointerDown = () => {
+    // 设置 800ms 的长按触发阈值
+    pressTimer.current = setTimeout(() => {
+      handleForceRefresh()
+      // 可以的话在这里加个 toast 提示：toast.success("已触发强制刷新")
+    }, 800)
+  }
+
+  const handlePointerUp = () => {
+    // 鼠标/手指抬起时清除定时器，如果是短按，定时器会被取消，不会触发强制刷新
+    if (pressTimer.current) clearTimeout(pressTimer.current)
+  }
+
+
+  // 导出数据为 Markdown 报告
+  const handleExportReport = () => {
+    // 1. 拼接 Markdown 文本
+    let md = `# 宏观监控数据及分析报告\n\n`;
+    md += `**生成时间**: ${new Date().toLocaleString('zh-CN')}\n\n`;
+
+    // --- 核心指标 ---
+    md += `## 1. 核心指标监控 (盯死美国的钱袋子)\n\n`;
+    md += `- **美国10年期国债收益率**: ${marketData?.us10y?.value?.toFixed(2) || '--'}% (日度变化: ${marketData?.us10y?.changePercent?.toFixed(2) || '--'}%)\n`;
+    md += `  - *分析*: 突破4.5%进入警戒区，科技股和新能源继续杀估值。\n`;
+    md += `- **美元指数**: ${marketData?.dxy?.value?.toFixed(2) || '--'} (日度变化: ${marketData?.dxy?.changePercent?.toFixed(2) || '--'}%)\n`;
+    md += `  - *分析*: 突破105说明全球极度缺钱，港股持续承压。\n`;
+    md += `- **布伦特原油**: $${marketData?.brent?.value?.toFixed(2) || '--'}/桶 (日度变化: ${marketData?.brent?.changePercent?.toFixed(2) || '--'}%)\n`;
+    md += `  - *分析*: 油价高企，中海油底仓坚决不动。\n`;
+    md += `- **黄金**: $${marketData?.gold?.value?.toFixed(2) || '--'}/盎司 (日度变化: ${marketData?.gold?.changePercent?.toFixed(2) || '--'}%)\n`;
+    md += `  - *分析*: 现货与期货基差状态：${marketData?.goldDetails?.spreadStatus === 'normal' ? '正常' : marketData?.goldDetails?.spreadStatus === 'warning' ? '警告' : '危险'}。\n\n`;
+
+    // --- 通胀数据 ---
+    md += `## 2. 通胀数据追踪\n\n`;
+    md += `- **Headline CPI**: ${cpiData.headline ?? '--'}%\n`;
+    md += `- **核心 CPI (Core)**: ${cpiData.core ?? '--'}%\n`;
+    md += `- **核心 CPI 环比**: ${cpiData.coreMonthly ?? '--'}%\n`;
+    md += `- *下一次发布日期*: ${cpiDataLive?.nextReleaseDate ?? '--'}\n\n`;
+
+    // --- 市场情绪总结与分析 ---
+    md += `## 3. 当前市场情绪总结\n\n`;
+    md += `- **利率环境**: 10Y收益率 ${marketData?.us10y?.value?.toFixed(2) || '--'}% ${marketData?.us10y?.value && marketData.us10y.value >= 4.5 ? '处于警戒区间' : '处于观察区间'}，市场预期美联储将维持 Higher for longer 立场。\n`;
+    md += `- **大宗商品**: 原油 $${marketData?.brent?.value?.toFixed(2) || '--'}/桶 维持震荡，黄金 $${marketData?.gold?.value?.toFixed(0) || '--'}/盎司 受益于避险情绪。\n`;
+    md += `- **美元流动性**: 美元指数 ${marketData?.dxy?.value?.toFixed(2) || '--'} ${marketData?.dxy?.value && marketData.dxy.value >= 105 ? '处于紧缩信号区' : '处于中性区间'}，全球流动性暂未出现极端信号。\n`;
+    md += `- **通胀压力**: 核心CPI环比 ${cpiData.coreMonthly}% ${cpiData.coreMonthly !== null && cpiData.coreMonthly >= 0.3 ? '超过警戒线' : '处于可控范围'}，${cpiData.coreMonthly !== null && cpiData.coreMonthly >= 0.4 ? '通胀黏性严重，美联储短期难以转向' : '关注后续数据变化'}。\n\n`;
+
+    // --- 建议策略 ---
+    md += `## 4. 当前建议策略\n\n`;
+    md += `> 维持高股息资产（神华、中海油、银行）防守配置，科技股和新能源暂时观望。密切关注下一次国债拍卖结果和美联储讲话。\n\n`;
+
+    md += `---\n*数据仅供参考，不构成投资建议 · 投资有风险，入市需谨慎*`;
+
+    // 2. 创建 Blob 对象并下载
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    // 设置下载文件名，包含当天日期
+    link.download = `宏观监控报告_${new Date().toISOString().split('T')[0]}.md`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url); // 释放内存
+  };
+
   // 使用实时CPI数据或备用数据
   const fallbackCPI = getCPIData()
   const cpiData: CPIData = cpiDataLive ? {
@@ -94,7 +185,7 @@ export default function MacroMonitorDashboard() {
     }
 
     let status: 'bullish' | 'bearish' | 'neutral' | 'warning' | 'danger' = 'neutral'
-    
+
     if (thresholds) {
       if (thresholds.danger && data.value >= thresholds.danger) {
         status = 'danger'
@@ -124,21 +215,21 @@ export default function MacroMonitorDashboard() {
   const generateChartData = (currentValue: number, volatility: number = 0.02) => {
     const data = []
     let value = currentValue * (1 - volatility * 3)
-    
+
     for (let i = 6; i >= 0; i--) {
       const date = new Date()
       date.setDate(date.getDate() - i)
       const dateStr = `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-      
+
       value = value + (Math.random() - 0.4) * currentValue * volatility
       data.push({ date: dateStr, value: Number(value.toFixed(2)) })
     }
-    
+
     // 确保最后一个值是当前值
     if (data.length > 0) {
       data[data.length - 1].value = currentValue
     }
-    
+
     return data
   }
 
@@ -149,7 +240,7 @@ export default function MacroMonitorDashboard() {
         isRefreshing={isRefreshing}
         extraActions={<OllamaChatDialog />}
       />
-      
+
       <main className="container mx-auto px-4 py-6">
         {/* 数据状态指示器 */}
         <div className="mb-4 flex items-center justify-between">
@@ -171,16 +262,32 @@ export default function MacroMonitorDashboard() {
               </span>
             )}
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => refresh()}
-            disabled={isLoading}
-            className="h-7 text-xs"
-          >
-            <RefreshCw className={`size-3.5 mr-1.5 ${isLoading ? 'animate-spin' : ''}`} />
-            刷新数据
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportReport}
+              className="h-7 text-xs"
+            >
+              <Download className="size-3.5 mr-1.5" />
+              导出报告
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => refresh()}
+              onPointerDown={handlePointerDown} // 按下开始计时
+              onPointerUp={handlePointerUp} // 抬起停止计时
+              onPointerLeave={handlePointerUp} // 移出按钮范围也停止计时
+              disabled={isLoading}
+              className="h-7 text-xs"
+            >
+              <RefreshCw className={`size-3.5 mr-1.5 ${isLoading ? 'animate-spin' : ''}`} />
+              刷新数据
+            </Button>
+          </div>
+
         </div>
 
         {/* 错误提示 */}
@@ -197,7 +304,7 @@ export default function MacroMonitorDashboard() {
             <h2 className="text-lg font-semibold">核心指标监控</h2>
             <span className="text-xs text-muted-foreground">盯死美国的钱袋子</span>
           </div>
-          
+
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Spinner className="size-8" />
@@ -218,7 +325,7 @@ export default function MacroMonitorDashboard() {
                 chartData={generateChartData(marketData?.us10y?.value || 4.39, 0.01)}
                 description="突破4.5%进入警戒区，科技股���新能源继续杀估值"
               />
-              
+
               <IndicatorCard
                 indicator={formatIndicator(
                   '美元指数',
@@ -232,7 +339,7 @@ export default function MacroMonitorDashboard() {
                 chartData={generateChartData(marketData?.dxy?.value || 104.25, 0.005)}
                 description="突破105说明全球极度缺钱，港股持续承压"
               />
-              
+
               <IndicatorCard
                 indicator={formatIndicator(
                   '布伦特原油',
@@ -247,7 +354,7 @@ export default function MacroMonitorDashboard() {
                 chartData={generateChartData(marketData?.brent?.value || 73.5, 0.02)}
                 description="油价高企，中海油底仓坚决不动"
               />
-              
+
               <GoldMonitorCard
                 spotPrice={marketData?.gold?.value ?? 0}
                 futuresPrice={marketData?.goldDetails?.futures ?? null}
@@ -260,11 +367,11 @@ export default function MacroMonitorDashboard() {
             </div>
           )}
         </section>
-        
+
         {/* Section 2: 国债拍卖 + 美联储口风 */}
         <section className="mb-8">
           <div className="grid gap-4 lg:grid-cols-2">
-            <TreasuryAuctionCard 
+            <TreasuryAuctionCard
               auctions={auctions}
               latestAuction={latestAuction}
               evaluation={auctionEvaluation}
@@ -274,41 +381,41 @@ export default function MacroMonitorDashboard() {
             <FedStatementsCard />
           </div>
         </section>
-        
+
         {/* Section 3: CPI数据 */}
         <section className="mb-8">
           <div className="flex items-center gap-2 mb-4">
             <h2 className="text-lg font-semibold">通胀数据追踪</h2>
             <span className="text-xs text-muted-foreground">每月发布，重点标记日期</span>
           </div>
-          
+
           <div className="grid gap-4 lg:grid-cols-2">
-            <CPICard 
-              data={cpiData} 
+            <CPICard
+              data={cpiData}
               nextReleaseDate={cpiDataLive?.nextReleaseDate}
               isLoading={cpiLoading}
               isLive={cpiIsLive}
             />
-            
+
             {/* 市场情绪总结 */}
             <div className="p-6 rounded-xl bg-card border border-border">
               <h3 className="font-semibold mb-4">当前市场情绪总结</h3>
-              
+
               <div className="space-y-4">
                 <div className="flex items-start gap-3">
                   <div className="size-2 rounded-full bg-warning mt-2 shrink-0" />
                   <div>
                     <div className="font-medium text-sm">利率环境</div>
                     <p className="text-xs text-muted-foreground leading-relaxed">
-                      10Y收益率 {marketData?.us10y?.value?.toFixed(2) || '--'}% 
-                      {marketData?.us10y?.value && marketData.us10y.value >= 4.5 
-                        ? '处于警戒区间' 
+                      10Y收益率 {marketData?.us10y?.value?.toFixed(2) || '--'}%
+                      {marketData?.us10y?.value && marketData.us10y.value >= 4.5
+                        ? '处于警戒区间'
                         : '处于观察区间'}，
                       市场预期美联储将维持 Higher for longer 立场。
                     </p>
                   </div>
                 </div>
-                
+
                 <div className="flex items-start gap-3">
                   <div className="size-2 rounded-full bg-success mt-2 shrink-0" />
                   <div>
@@ -319,34 +426,34 @@ export default function MacroMonitorDashboard() {
                     </p>
                   </div>
                 </div>
-                
+
                 <div className="flex items-start gap-3">
                   <div className="size-2 rounded-full bg-primary mt-2 shrink-0" />
                   <div>
                     <div className="font-medium text-sm">美元流动性</div>
                     <p className="text-xs text-muted-foreground leading-relaxed">
-                      美元指数 {marketData?.dxy?.value?.toFixed(2) || '--'} 
-                      {marketData?.dxy?.value && marketData.dxy.value >= 105 
-                        ? '处于紧缩信号区' 
+                      美元指数 {marketData?.dxy?.value?.toFixed(2) || '--'}
+                      {marketData?.dxy?.value && marketData.dxy.value >= 105
+                        ? '处于紧缩信号区'
                         : '处于中性区间'}，
                       全球流动性暂未出现极端信号。
                     </p>
                   </div>
                 </div>
-                
+
                 <div className="flex items-start gap-3">
                   <div className="size-2 rounded-full bg-danger mt-2 shrink-0" />
                   <div>
                     <div className="font-medium text-sm">通胀压力</div>
                     <p className="text-xs text-muted-foreground leading-relaxed">
-                      核心CPI环比 {cpiData.coreMonthly}% 
+                      核心CPI环比 {cpiData.coreMonthly}%
                       {cpiData.coreMonthly >= 0.3 ? '超过警戒线' : '处于可控范围'}，
                       {cpiData.coreMonthly >= 0.4 ? '通胀黏性严重���美联储短期难以转向' : '关注后续数据变化'}。
                     </p>
                   </div>
                 </div>
               </div>
-              
+
               <div className="mt-6 p-4 rounded-lg bg-warning/10 border border-warning/20">
                 <div className="font-medium text-sm text-warning mb-1">当前建议策略</div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
@@ -357,7 +464,7 @@ export default function MacroMonitorDashboard() {
             </div>
           </div>
         </section>
-        
+
         {/* Section 4: 策略速查 */}
         <section className="mb-8">
           <StrategyTips />
@@ -367,7 +474,7 @@ export default function MacroMonitorDashboard() {
         <section className="mb-8">
           <DataSourcesPanel />
         </section>
-        
+
         {/* Footer */}
         <footer className="text-center py-6 text-xs text-muted-foreground border-t border-border">
           <p>数据仅供参考，不构成投资建议 · 投资有风险，入市需谨慎</p>

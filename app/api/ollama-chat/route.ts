@@ -172,7 +172,6 @@ export async function POST(request: Request) {
       })
     }
 
-    // 基础聊天：/api/chat（可按部署附带 Bearer）
     const headers: Record<string, string> = { 'Content-Type': 'application/json; charset=utf-8' }
     if (authToken) headers.Authorization = `Bearer ${authToken}`
 

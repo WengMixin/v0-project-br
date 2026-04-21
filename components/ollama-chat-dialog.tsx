@@ -24,7 +24,6 @@ interface Msg {
   id: string
   role: Role
   content: string
-  /** 本条助手消息是否通过联网工具生成 */
   usedWeb?: boolean
   usedTools?: string[]
   degraded?: boolean

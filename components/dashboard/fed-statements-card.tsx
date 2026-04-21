@@ -1,24 +1,49 @@
 'use client'
 
-import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Mic2, TrendingUp, TrendingDown, Minus, RefreshCw, Wifi, WifiOff, ExternalLink } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
-import { Switch } from '@/components/ui/switch'
-import { Label } from '@/components/ui/label'
-import { useFedAnalysis, type FedAnalysisItem } from '@/hooks/use-market-data'
+import useSWR from 'swr'
+
+interface FedAnalysis {
+  id: string
+  date: string
+  speaker: string
+  title: string
+  stance: 'hawkish' | 'dovish' | 'neutral'
+  score: number
+  summary: string
+  keyPhrases: string[]
+  actionSignal: string
+  analyzedAt: string
+}
+
+interface FedAnalysisResponse {
+  success: boolean
+  analyses: FedAnalysis[]
+  source: 'live' | 'cache'
+  timestamp: string
+}
+
+const fetcher = (url: string) => fetch(url).then(res => res.json())
 
 export function FedStatementsCard() {
-  const [useDeepSeek, setUseDeepSeek] = useState(false)
-  const preferredModel = useDeepSeek ? 'deepseek' : 'ollama'
-  const { analyses, isLoading, isError, refresh, source } = useFedAnalysis(preferredModel)
-
-  const isLive = source === 'live'
+  const { data, error, isLoading, mutate } = useSWR<FedAnalysisResponse>(
+    '/api/fed-analysis',
+    fetcher,
+    {
+      refreshInterval: 3600000, // 每小时刷新
+      dedupingInterval: 1800000,
+    }
+  )
   
-  const getSentimentIcon = (stance: FedAnalysisItem['stance']) => {
+  const analyses = data?.analyses || []
+  const isLive = data?.source === 'live'
+  
+  const getSentimentIcon = (stance: FedAnalysis['stance']) => {
     switch (stance) {
       case 'hawkish':
         return <TrendingUp className="size-4" />
@@ -29,7 +54,7 @@ export function FedStatementsCard() {
     }
   }
   
-  const getSentimentStyle = (stance: FedAnalysisItem['stance']) => {
+  const getSentimentStyle = (stance: FedAnalysis['stance']) => {
     switch (stance) {
       case 'hawkish':
         return 'bg-danger/20 text-danger border-danger/30'
@@ -40,7 +65,7 @@ export function FedStatementsCard() {
     }
   }
   
-  const getSentimentLabel = (stance: FedAnalysisItem['stance']) => {
+  const getSentimentLabel = (stance: FedAnalysis['stance']) => {
     switch (stance) {
       case 'hawkish':
         return '鹰派'
@@ -61,16 +86,16 @@ export function FedStatementsCard() {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10">
               <Mic2 className="size-4 text-primary" />
             </div>
-            <div className="min-w-0">
+            <div>
               <CardTitle className="text-base">美联储口风追踪</CardTitle>
-              <CardDescription className="flex items-center gap-2 flex-wrap">
+              <CardDescription className="flex items-center gap-2">
                 AI分析预期管理信号
-                {source !== undefined && (
+                {data && (
                   isLive ? (
                     <span className="flex items-center gap-1 text-success">
                       <Wifi className="size-3" /> 实时
@@ -84,32 +109,15 @@ export function FedStatementsCard() {
               </CardDescription>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <div className="flex items-center space-x-2 rounded-full border border-border bg-muted/50 px-2 py-1">
-              <Label
-                htmlFor="fed-model-switch"
-                className="text-[10px] font-medium text-muted-foreground cursor-pointer whitespace-nowrap"
-              >
-                {useDeepSeek ? 'DeepSeek' : 'Ollama'}
-              </Label>
-              <Switch
-                id="fed-model-switch"
-                checked={useDeepSeek}
-                onCheckedChange={setUseDeepSeek}
-                disabled={isLoading}
-                className="scale-75"
-              />
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => refresh()}
-              disabled={isLoading}
-              className="size-8"
-            >
-              <RefreshCw className={cn('size-4', isLoading && 'animate-spin')} />
-            </Button>
-          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => mutate()}
+            disabled={isLoading}
+            className="size-8"
+          >
+            <RefreshCw className={cn('size-4', isLoading && 'animate-spin')} />
+          </Button>
         </div>
       </CardHeader>
       
@@ -118,7 +126,7 @@ export function FedStatementsCard() {
           <div className="flex items-center justify-center py-8">
             <Spinner className="size-6" />
           </div>
-        ) : isError ? (
+        ) : error ? (
           <div className="text-center py-8 text-sm text-muted-foreground">
             加载失败，请稍后重试
           </div>
