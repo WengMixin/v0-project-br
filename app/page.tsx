@@ -15,6 +15,7 @@ import {
   THRESHOLDS
 } from '@/lib/market-data'
 import type { CPIData } from '@/lib/market-data'
+import { buildSniperWarfareMarkdown } from '@/lib/sniper-report'
 import { Spinner } from '@/components/ui/spinner'
 import { AlertCircle, RefreshCw, Wifi, WifiOff, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -157,6 +158,36 @@ export default function MacroMonitorDashboard() {
     URL.revokeObjectURL(url); // 释放内存
   };
 
+  const handleExportSniperReport = () => {
+    const md = buildSniperWarfareMarkdown({
+      radar: marketData?.sniperRadar,
+      cpi: {
+        headline: cpiData.headline,
+        core: cpiData.core,
+        coreMonthly: cpiData.coreMonthly,
+        date: cpiData.date,
+        nextReleaseDate: cpiDataLive?.nextReleaseDate,
+      },
+      market: marketData
+        ? {
+            us10y: marketData.us10y,
+            dxy: marketData.dxy,
+            gold: marketData.gold,
+            goldDetails: marketData.goldDetails,
+          }
+        : undefined,
+    })
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `宏观狙击战报_${new Date().toISOString().split('T')[0]}.md`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  };
+
   // 使用实时CPI数据或备用数据
   const fallbackCPI = getCPIData()
   const cpiData: CPIData = cpiDataLive ? {
@@ -271,6 +302,16 @@ export default function MacroMonitorDashboard() {
             >
               <Download className="size-3.5 mr-1.5" />
               导出报告
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportSniperReport}
+              className="h-7 text-xs"
+              title="布伦特/HY/汽油/ITA/QQQ/港股等雷达表 + 模块草稿"
+            >
+              <Download className="size-3.5 mr-1.5" />
+              狙击战报
             </Button>
 
             <Button

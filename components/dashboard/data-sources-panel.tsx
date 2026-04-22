@@ -52,7 +52,7 @@ const dataSources: DataSource[] = [
   {
     name: 'FRED API',
     description: '美联储经济数据库 - 80万+经济时间序列（首选数据源）',
-    features: ['核心CPI同比/环比', '布伦特原油现货价格', '国债收益率历史', '联邦基金利率'],
+    features: ['核心CPI同比/环比', '布伦特原油现货', 'HY OAS (BAMLH0A0HYM2)', '全美汽油 (GASREGW)', '国债收益率历史'],
     apiKeyRequired: true,
     apiKeyEnvVar: 'FRED_API_KEY',
     freeLimit: '120次/分钟',
