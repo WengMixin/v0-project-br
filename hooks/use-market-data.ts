@@ -13,6 +13,41 @@ export interface GoldDetails {
   isBackwardation: boolean
 }
 
+/** 狙击战报雷达块（/api/market-data 扩展字段） */
+export interface SniperQuoteRow {
+  symbol: string
+  name: string
+  price: number | null
+  changePercent: number | null
+  lastUpdate?: string | null
+}
+
+export interface SniperRadarPayload {
+  brentSpot: {
+    value: number | null
+    previousClose: number | null
+    spotDate: string | null
+    changePercent: number | null
+    yoyPercent: number | null
+    yoyCompareDate: string | null
+  }
+  brentFutures: SniperQuoteRow
+  wtiContinuous: SniperQuoteRow
+  brentSpotMinusFuturesUsd: number | null
+  hyOas: SniperQuoteRow
+  gasolineAaa: SniperQuoteRow
+  ita: SniperQuoteRow
+  qqq: SniperQuoteRow
+  itaQqqRatio: number | null
+  hk: {
+    valueGold03081: SniperQuoteRow
+    chinaShenhua01088: SniperQuoteRow
+    chinaMobile00941: SniperQuoteRow
+    zijinMining02899: SniperQuoteRow
+  }
+  dataNotes?: string[]
+}
+
 export interface MarketDataResponse {
   us10y: {
     value: number
@@ -52,6 +87,7 @@ export interface MarketDataResponse {
     year30: number
     date: string
   }
+  sniperRadar?: SniperRadarPayload | null
   source: 'live' | 'fallback'
   timestamp: string
 }

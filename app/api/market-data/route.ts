@@ -336,6 +336,106 @@ async function fetchFREDBrentOil(apiKey: string): Promise<{
   }
 }
 
+/** 更长历史：用于布伦特现货同比 YoY */
+async function fetchFREDBrentSpotYoy(apiKey: string): Promise<{
+  yoyPercent: number | null
+  yearAgoDate: string | null
+  yearAgoValue: number | null
+} | null> {
+  try {
+    const response = await fetch(
+      `https://api.stlouisfed.org/fred/series/observations?series_id=DCOILBRENTEU&api_key=${apiKey}&file_type=json&limit=400&sort_order=desc`,
+      { next: { revalidate: 3600 } }
+    )
+    if (!response.ok) return null
+    const data = await response.json()
+    const obs: FREDObservation[] = (data.observations || []).filter((o: FREDObservation) => o.value !== '.')
+    if (obs.length < 2) return null
+    const latest = obs[0]
+    const latestVal = parseFloat(latest.value)
+    const latestTime = new Date(latest.date + 'T12:00:00Z').getTime()
+    const target = latestTime - 365 * 24 * 60 * 60 * 1000
+    let yearAgo: FREDObservation | null = null
+    for (const o of obs) {
+      const t = new Date(o.date + 'T12:00:00Z').getTime()
+      if (t <= target) {
+        yearAgo = o
+        break
+      }
+    }
+    if (!yearAgo) return null
+    const yv = parseFloat(yearAgo.value)
+    if (!Number.isFinite(yv) || yv === 0) return null
+    const yoyPercent = ((latestVal - yv) / yv) * 100
+    return {
+      yoyPercent,
+      yearAgoDate: yearAgo.date,
+      yearAgoValue: yv,
+    }
+  } catch (e) {
+    console.error('[v0] FRED Brent YoY error:', e)
+    return null
+  }
+}
+
+async function fetchFredSeriesLatest(
+  seriesId: string,
+  apiKey: string,
+  limit = 2
+): Promise<{ value: number; date: string; previousValue: number | null; changePercent: number | null } | null> {
+  try {
+    const response = await fetch(
+      `https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}&api_key=${apiKey}&file_type=json&limit=${limit}&sort_order=desc`,
+      { next: { revalidate: 3600 } }
+    )
+    if (!response.ok) return null
+    const data = await response.json()
+    const obs: FREDObservation[] = (data.observations || []).filter((o: FREDObservation) => o.value !== '.')
+    if (obs.length === 0) return null
+    const v0 = parseFloat(obs[0].value)
+    const v1 = obs.length > 1 ? parseFloat(obs[1].value) : null
+    const changePercent =
+      v1 !== null && Number.isFinite(v1) && v1 !== 0 ? ((v0 - v1) / v1) * 100 : null
+    return { value: v0, date: obs[0].date, previousValue: v1, changePercent }
+  } catch (e) {
+    console.error(`[v0] FRED ${seriesId} error:`, e)
+    return null
+  }
+}
+
+interface YahooMiniQuote {
+  symbol: string
+  shortName?: string
+  regularMarketPrice?: number
+  regularMarketChangePercent?: number
+  regularMarketTime?: number
+}
+
+async function fetchYahooBatchForSniper(symbols: string[]): Promise<YahooMiniQuote[]> {
+  const joined = symbols.join(',')
+  const endpoints = [
+    `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(joined)}`,
+    `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(joined)}`,
+  ]
+  for (const url of endpoints) {
+    try {
+      const response = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+        next: { revalidate: 120 },
+      })
+      if (!response.ok) continue
+      const data = (await response.json()) as {
+        quoteResponse?: { result?: YahooMiniQuote[] }
+      }
+      const r = data.quoteResponse?.result
+      if (Array.isArray(r) && r.length) return r
+    } catch {
+      continue
+    }
+  }
+  return []
+}
+
 // 备用: 使用 Financial Modeling Prep 免费API
 async function fetchFMPData(symbol: string, apiKey?: string): Promise<{
   price: number
@@ -607,6 +707,8 @@ export async function GET() {
     
     // 使用FRED获取布伦特原油现货价格
     const fredApiKey = process.env.FRED_API_KEY
+    let brentPreviousClose: number | null = null
+    let brentSpotDate: string | null = null
     if (fredApiKey) {
       try {
         const brentData = await fetchFREDBrentOil(fredApiKey)
@@ -618,6 +720,8 @@ export async function GET() {
             lastUpdate: brentData.date
           }
           marketData.brentSpot = true
+          brentPreviousClose = brentData.previousValue
+          brentSpotDate = brentData.date
           console.log('[v0] Brent oil from FRED:', brentData.value, 'date:', brentData.date)
         }
       } catch (fredError) {
@@ -687,6 +791,123 @@ export async function GET() {
       gold: { value: 3010.20, change: 12.30, changePercent: 0.41, lastUpdate: new Date().toISOString() },
     }
     
+    // —— 狙击战报扩展：FRED YoY / HY OAS + Yahoo 多标的 ——
+    type SniperQuote = {
+      symbol: string
+      name: string
+      price: number | null
+      changePercent: number | null
+      currency?: string
+      lastUpdate: string | null
+    }
+    const emptyQuote = (symbol: string, name: string): SniperQuote => ({
+      symbol,
+      name,
+      price: null,
+      changePercent: null,
+      lastUpdate: null,
+    })
+
+    let brentYoyPercent: number | null = null
+    let brentYoyAsOf: string | null = null
+    let hyOas: SniperQuote = emptyQuote('BAMLH0A0HYM2', 'HY OAS (FRED)')
+    let gasolineAaa: SniperQuote = emptyQuote('GASREGW', '全美汽油均价 (FRED)')
+
+    if (fredApiKey) {
+      const yoy = await fetchFREDBrentSpotYoy(fredApiKey)
+      if (yoy) {
+        brentYoyPercent = yoy.yoyPercent
+        brentYoyAsOf = yoy.yearAgoDate
+      }
+      const hy = await fetchFredSeriesLatest('BAMLH0A0HYM2', fredApiKey, 3)
+      if (hy) {
+        hyOas = {
+          symbol: 'BAMLH0A0HYM2',
+          name: '高收益债利差 HY OAS (bps, FRED)',
+          price: hy.value,
+          changePercent: hy.changePercent,
+          lastUpdate: hy.date,
+        }
+      }
+      const gas = await fetchFredSeriesLatest('GASREGW', fredApiKey, 3)
+      if (gas) {
+        gasolineAaa = {
+          symbol: 'GASREGW',
+          name: '全美汽油均价 (USD/加仑, FRED)',
+          price: gas.value,
+          changePercent: gas.changePercent,
+          lastUpdate: gas.date,
+        }
+      }
+    }
+
+    const sniperSymbols = ['ITA', 'QQQ', '03081.HK', '01088.HK', '00941.HK', '02899.HK', 'BZ=F', 'CL=F']
+    const yahooSniper = await fetchYahooBatchForSniper(sniperSymbols)
+    const pickY = (sym: string, name: string): SniperQuote => {
+      const q = yahooSniper.find((x) => x.symbol === sym)
+      if (!q || q.regularMarketPrice == null) return emptyQuote(sym, name)
+      return {
+        symbol: sym,
+        name,
+        price: q.regularMarketPrice,
+        changePercent: q.regularMarketChangePercent ?? null,
+        lastUpdate: q.regularMarketTime
+          ? new Date(q.regularMarketTime * 1000).toISOString()
+          : null,
+      }
+    }
+
+    const brentFut = pickY('BZ=F', '布伦特期货 (前月)')
+    const wtiFut = pickY('CL=F', 'WTI 原油连续 (CL=F，作能源风险偏好参考)')
+    const ita = pickY('ITA', '军工 ETF (ITA)')
+    const qqq = pickY('QQQ', '纳斯达克100 (QQQ)')
+    const hk03081 = pickY('03081.HK', '价值黄金 (03081)')
+    const hk01088 = pickY('01088.HK', '中国神华 (01088)')
+    const hk00941 = pickY('00941.HK', '中国移动 (00941)')
+    const hk02899 = pickY('02899.HK', '紫金矿业 (02899)')
+
+    let itaQqqRatio: number | null = null
+    if (ita.price != null && qqq.price != null && qqq.price !== 0) {
+      itaQqqRatio = ita.price / qqq.price
+    }
+
+    const brentSpotVal = marketData.brent?.value ?? null
+    const brentFutVal = brentFut.price
+    let brentSpotFutSpread: number | null = null
+    if (brentSpotVal != null && brentFutVal != null) {
+      brentSpotFutSpread = brentSpotVal - brentFutVal
+    }
+
+    const sniperRadar = {
+      brentSpot: {
+        value: brentSpotVal,
+        previousClose: brentPreviousClose,
+        spotDate: brentSpotDate,
+        changePercent: marketData.brent?.changePercent ?? null,
+        yoyPercent: brentYoyPercent,
+        yoyCompareDate: brentYoyAsOf,
+      },
+      brentFutures: brentFut,
+      wtiContinuous: wtiFut,
+      brentSpotMinusFuturesUsd: brentSpotFutSpread,
+      hyOas: hyOas,
+      gasolineAaa: gasolineAaa,
+      ita,
+      qqq,
+      itaQqqRatio,
+      hk: {
+        valueGold03081: hk03081,
+        chinaShenhua01088: hk01088,
+        chinaMobile00941: hk00941,
+        zijinMining02899: hk02899,
+      },
+      dataNotes: [
+        '港股 Yahoo 代码：03081.HK、01088.HK、00941.HK、02899.HK；若某标的无报价则表格显示为 —',
+        'HY OAS：FRED BAMLH0A0HYM2（ICE BofA 高收益 OAS，单位 bps）',
+        '汽油：FRED GASREGW（全美常规汽油周均价，USD/加仑）',
+      ],
+    }
+
     // 合并数据
     const finalData = {
       us10y: marketData.us10y || fallbackData.us10y,
@@ -697,6 +918,7 @@ export async function GET() {
       goldSource: marketData.goldSource,
       brentSpot: marketData.brentSpot,
       treasuryRates: marketData.treasuryRates,
+      sniperRadar,
       source: Object.keys(marketData).length > 0 ? 'live' : 'fallback',
       timestamp: new Date().toISOString()
     }
@@ -712,6 +934,7 @@ export async function GET() {
       dxy: { value: 104.25, change: -0.15, changePercent: -0.14, lastUpdate: new Date().toISOString() },
       brent: { value: 73.50, change: 0.85, changePercent: 1.17, lastUpdate: new Date().toISOString() },
       gold: { value: 3010.20, change: 12.30, changePercent: 0.41, lastUpdate: new Date().toISOString() },
+      sniperRadar: null,
       source: 'fallback',
       timestamp: new Date().toISOString()
     })
