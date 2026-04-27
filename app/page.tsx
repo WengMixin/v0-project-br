@@ -1,6 +1,7 @@
 'use client'
 
 import { DashboardHeader } from '@/components/dashboard/header'
+import { OllamaChatDialog } from '@/components/ollama-chat-dialog'
 import { IndicatorCard } from '@/components/dashboard/indicator-card'
 import { TreasuryAuctionCard } from '@/components/dashboard/treasury-auction-card'
 import { FedStatementsCard } from '@/components/dashboard/fed-statements-card'
@@ -143,7 +144,11 @@ export default function MacroMonitorDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      <DashboardHeader onRefresh={handleRefreshAll} isRefreshing={isRefreshing} />
+      <DashboardHeader
+        onRefresh={handleRefreshAll}
+        isRefreshing={isRefreshing}
+        extraActions={<OllamaChatDialog />}
+      />
       
       <main className="container mx-auto px-4 py-6">
         {/* 数据状态指示器 */}

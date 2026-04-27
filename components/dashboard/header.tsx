@@ -1,5 +1,6 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Activity, RefreshCw, Clock, Info, LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -23,9 +24,10 @@ interface RefreshStatus {
 interface DashboardHeaderProps {
   onRefresh?: () => void
   isRefreshing?: boolean
+  extraActions?: ReactNode
 }
 
-export function DashboardHeader({ onRefresh, isRefreshing = false }: DashboardHeaderProps) {
+export function DashboardHeader({ onRefresh, isRefreshing = false, extraActions }: DashboardHeaderProps) {
   const [lastUpdate, setLastUpdate] = useState<string | null>(null)
   const [refreshStatus, setRefreshStatus] = useState<RefreshStatus | null>(null)
   const [isLoggingOut, setIsLoggingOut] = useState(false)
@@ -204,7 +206,9 @@ export function DashboardHeader({ onRefresh, isRefreshing = false }: DashboardHe
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-            
+
+            {extraActions}
+
             <Button 
               variant="outline" 
               size="sm"
