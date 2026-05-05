@@ -292,7 +292,11 @@ interface FREDObservation {
   value: string
 }
 
-async function fetchFREDBrentOil(apiKey: string): Promise<{
+async function fetchFredSeriesLatestPair(
+  seriesId: string,
+  apiKey: string,
+  limit = 5
+): Promise<{
   value: number
   previousValue: number
   change: number
@@ -300,40 +304,48 @@ async function fetchFREDBrentOil(apiKey: string): Promise<{
   date: string
 } | null> {
   try {
-    // 获取最近5个交易日的数据以计算变动
     const response = await fetch(
-      `https://api.stlouisfed.org/fred/series/observations?series_id=DCOILBRENTEU&api_key=${apiKey}&file_type=json&limit=5&sort_order=desc`,
-      { next: { revalidate: 300 } } // 缓存5分钟
+      `https://api.stlouisfed.org/fred/series/observations?series_id=${encodeURIComponent(seriesId)}&api_key=${apiKey}&file_type=json&limit=${limit}&sort_order=desc`,
+      { next: { revalidate: 300 } }
     )
-    
+
     if (!response.ok) return null
-    
+
     const data = await response.json()
     if (!data.observations || data.observations.length === 0) return null
-    
-    // 获取最新值和前一个值
+
     const observations: FREDObservation[] = data.observations.filter(
       (obs: FREDObservation) => obs.value !== '.'
     )
-    
+
     if (observations.length === 0) return null
-    
+
     const latestValue = parseFloat(observations[0].value)
     const previousValue = observations.length > 1 ? parseFloat(observations[1].value) : latestValue
     const change = latestValue - previousValue
     const changePercent = previousValue !== 0 ? (change / previousValue) * 100 : 0
-    
+
     return {
       value: latestValue,
       previousValue,
       change,
       changePercent,
-      date: observations[0].date
+      date: observations[0].date,
     }
   } catch (error) {
-    console.error('FRED Brent Oil fetch error:', error)
+    console.error(`[v0] FRED ${seriesId} fetch error:`, error)
     return null
   }
+}
+
+async function fetchFREDBrentOil(apiKey: string): Promise<{
+  value: number
+  previousValue: number
+  change: number
+  changePercent: number
+  date: string
+} | null> {
+  return fetchFredSeriesLatestPair('DCOILBRENTEU', apiKey, 5)
 }
 
 // 备用: 使用 Financial Modeling Prep 免费API
@@ -623,6 +635,25 @@ export async function GET() {
       } catch (fredError) {
         console.error('[v0] FRED Brent error:', fredError)
       }
+
+      // 美元指数：Yahoo 在服务端常返回 Unauthorized；用 FRED 贸易加权指数覆盖（与 ICE DXY 不同但趋势一致）
+      const dxySeries = process.env.DXY_FRED_SERIES?.trim() || 'DTWEXAFEGS'
+      try {
+        const dxyFred = await fetchFredSeriesLatestPair(dxySeries, fredApiKey, 5)
+        if (dxyFred) {
+          marketData.dxy = {
+            value: dxyFred.value,
+            change: dxyFred.change,
+            changePercent: dxyFred.changePercent,
+            lastUpdate: dxyFred.date,
+          }
+          ;(marketData as Record<string, unknown>).dxySource = 'fred'
+          ;(marketData as Record<string, unknown>).dxyFredSeries = dxySeries
+          console.log('[v0] DXY slot from FRED', dxySeries, dxyFred.value, 'date:', dxyFred.date)
+        }
+      } catch (dxyFredErr) {
+        console.error('[v0] FRED dollar index error:', dxyFredErr)
+      }
     }
     
     // 使用FMP Treasury Rates API获取国债收益率数据
@@ -688,6 +719,7 @@ export async function GET() {
     }
     
     // 合并数据
+    const mdExtra = marketData as Record<string, unknown>
     const finalData = {
       us10y: marketData.us10y || fallbackData.us10y,
       dxy: marketData.dxy || fallbackData.dxy,
@@ -697,6 +729,8 @@ export async function GET() {
       goldSource: marketData.goldSource,
       brentSpot: marketData.brentSpot,
       treasuryRates: marketData.treasuryRates,
+      dxySource: typeof mdExtra.dxySource === 'string' ? mdExtra.dxySource : undefined,
+      dxyFredSeries: typeof mdExtra.dxyFredSeries === 'string' ? mdExtra.dxyFredSeries : undefined,
       source: Object.keys(marketData).length > 0 ? 'live' : 'fallback',
       timestamp: new Date().toISOString()
     }

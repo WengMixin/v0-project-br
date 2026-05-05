@@ -41,6 +41,9 @@ export interface MarketDataResponse {
   goldDetails?: GoldDetails
   goldSource?: string
   brentSpot?: boolean
+  /** yahoo≈ICE DXY 期货；fred=FRED 贸易加权美元指数（默认 DTWEXAFEGS） */
+  dxySource?: 'yahoo' | 'fred'
+  dxyFredSeries?: string
   treasuryRates?: {
     month1: number
     month3: number

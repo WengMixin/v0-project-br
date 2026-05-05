@@ -221,7 +221,9 @@ export default function MacroMonitorDashboard() {
               
               <IndicatorCard
                 indicator={formatIndicator(
-                  '美元指数',
+                  marketData?.dxySource === 'fred'
+                    ? `美元指数 (FRED ${marketData.dxyFredSeries ?? 'DTWEXAFEGS'})`
+                    : '美元指数',
                   marketData?.dxy,
                   { warning: THRESHOLDS.dxy.high }
                 )}
@@ -230,7 +232,11 @@ export default function MacroMonitorDashboard() {
                   warning: THRESHOLDS.dxy.high
                 }}
                 chartData={generateChartData(marketData?.dxy?.value || 104.25, 0.005)}
-                description="突破105说明全球极度缺钱，港股持续承压"
+                description={
+                  marketData?.dxySource === 'fred'
+                    ? '服务端优先用 FRED 贸易加权美元指数；与 ICE DXY 点位不同，看趋势与相对强弱'
+                    : '突破105说明全球极度缺钱，港股持续承压'
+                }
               />
               
               <IndicatorCard
