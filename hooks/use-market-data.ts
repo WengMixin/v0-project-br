@@ -214,6 +214,116 @@ export function useCPIData() {
   }
 }
 
+export interface MacroSeriesRow {
+  label: string
+  unit: string
+  scale?: string
+  value: number | null
+  previousValue: number | null
+  change: number | null
+  changePercent: number | null
+  date: string | null
+  error?: string
+}
+
+export interface MacroIndicatorsPayload {
+  success: boolean
+  error?: string
+  series: Record<string, MacroSeriesRow>
+  treasury?: {
+    recordDate: string
+    label: string
+    balanceDisplay: string | null
+  } | null
+  timestamp: string
+}
+
+export function useMacroIndicators() {
+  const { data, error, isLoading, mutate } = useSWR<MacroIndicatorsPayload>(
+    '/api/macro-indicators',
+    fetcher,
+    {
+      refreshInterval: 600000,
+      dedupingInterval: 300000,
+      revalidateOnFocus: false,
+    }
+  )
+
+  return {
+    data,
+    isLoading,
+    isError: error,
+    refresh: mutate,
+  }
+}
+
+export interface FedRssItem {
+  title: string
+  link: string
+  pubDate?: string
+}
+
+export interface FedPressRssPayload {
+  success: boolean
+  items: FedRssItem[]
+  source?: string
+  error?: string
+  timestamp: string
+}
+
+export function useFedPressRss() {
+  const { data, error, isLoading, mutate } = useSWR<FedPressRssPayload>(
+    '/api/fed-press-rss',
+    fetcher,
+    {
+      refreshInterval: 900000,
+      dedupingInterval: 600000,
+      revalidateOnFocus: false,
+    }
+  )
+
+  return {
+    data,
+    isLoading,
+    isError: error,
+    refresh: mutate,
+  }
+}
+
+export interface HkQuoteRow {
+  symbol: string
+  name: string
+  price: number | null
+  changePercent: number | null
+  asOf: string | null
+}
+
+export interface HkQuotesPayload {
+  success: boolean
+  quotes: HkQuoteRow[]
+  source: string
+  hint?: string
+  timestamp: string
+}
+
+export function useHkQuotes() {
+  const { data, error, isLoading, mutate } = useSWR<HkQuotesPayload>(
+    '/api/hk-quotes',
+    fetcher,
+    {
+      refreshInterval: 120000,
+      dedupingInterval: 60000,
+    }
+  )
+
+  return {
+    data,
+    isLoading,
+    isError: error,
+    refresh: mutate,
+  }
+}
+
 export interface FedAnalysisItem {
   id: string
   date: string

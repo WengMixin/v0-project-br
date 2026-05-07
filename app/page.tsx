@@ -9,7 +9,10 @@ import { CPICard } from '@/components/dashboard/cpi-card'
 import { StrategyTips } from '@/components/dashboard/strategy-tips'
 import { DataSourcesPanel } from '@/components/dashboard/data-sources-panel'
 import { GoldMonitorCard } from '@/components/dashboard/gold-monitor-card'
-import { useMarketData, useTreasuryAuctions, useCPIData } from '@/hooks/use-market-data'
+import { MacroLiquidityCard } from '@/components/dashboard/macro-liquidity-card'
+import { FedPressRssCard } from '@/components/dashboard/fed-press-rss-card'
+import { HkQuotesCard } from '@/components/dashboard/hk-quotes-card'
+import { useMarketData, useTreasuryAuctions, useCPIData, useMacroIndicators, useFedPressRss, useHkQuotes } from '@/hooks/use-market-data'
 import {
   getCPIData,
   THRESHOLDS
@@ -42,6 +45,9 @@ export default function MacroMonitorDashboard() {
     refresh: refreshAuctions 
   } = useTreasuryAuctions()
   const { data: cpiDataLive, isLoading: cpiLoading, isLive: cpiIsLive, refresh: refreshCPI } = useCPIData()
+  const { data: macroData, isLoading: macroLoading, refresh: refreshMacro } = useMacroIndicators()
+  const { data: fedRssData, isLoading: fedRssLoading, refresh: refreshFedRss } = useFedPressRss()
+  const { data: hkData, isLoading: hkLoading, refresh: refreshHk } = useHkQuotes()
   
   const [isRefreshing, setIsRefreshing] = useState(false)
   
@@ -52,7 +58,10 @@ export default function MacroMonitorDashboard() {
       await Promise.all([
         refresh(),
         refreshAuctions(),
-        refreshCPI()
+        refreshCPI(),
+        refreshMacro(),
+        refreshFedRss(),
+        refreshHk(),
       ])
       setLastUpdateTime(new Date().toLocaleDateString('zh-CN', { 
         year: 'numeric',
@@ -266,7 +275,28 @@ export default function MacroMonitorDashboard() {
             </div>
           )}
         </section>
-        
+
+        {/* Section 1b: FRED 流动性 + 联储 RSS + 港股 */}
+        <section className="mb-8">
+          <div className="flex items-center gap-2 mb-4">
+            <h2 className="text-lg font-semibold">流动性与政策脉搏</h2>
+            <span className="text-xs text-muted-foreground">FRED · 财政部 DTS · 联储 RSS · Yahoo 港股（可选）</span>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-3">
+            <MacroLiquidityCard
+              data={macroData}
+              isLoading={macroLoading}
+              onRefresh={() => refreshMacro()}
+            />
+            <FedPressRssCard
+              data={fedRssData}
+              isLoading={fedRssLoading}
+              onRefresh={() => refreshFedRss()}
+            />
+            <HkQuotesCard data={hkData} isLoading={hkLoading} onRefresh={() => refreshHk()} />
+          </div>
+        </section>
+
         {/* Section 2: 国债拍卖 + 美联储口风 */}
         <section className="mb-8">
           <div className="grid gap-4 lg:grid-cols-2">

@@ -36,7 +36,7 @@ const dataSources: DataSource[] = [
   {
     name: 'Yahoo Finance',
     description: '股票、期货、外汇实时数据',
-    features: ['10Y国债收益率', '美元指数（Yahoo，服务端可能被拒）', '原油期货', '黄金期货'],
+    features: ['10Y国债收益率', '美元指数（Yahoo，服务端可能被拒）', '原油期货', '黄金期货', '港股代码见 HK_YAHOO_SYMBOLS'],
     apiKeyRequired: false,
     freeLimit: '无限制（合理使用）',
     docsUrl: 'https://finance.yahoo.com/'
@@ -52,7 +52,7 @@ const dataSources: DataSource[] = [
   {
     name: 'FRED API',
     description: '美联储经济数据库 - 80万+经济时间序列（首选数据源）',
-    features: ['核心CPI同比/环比', '布伦特原油现货价格', '美元指数覆盖（FRED DTWEXAFEGS，可 DXY_FRED_SERIES）', '国债收益率历史', '联邦基金利率'],
+    features: ['核心CPI同比/环比', '布伦特原油现货价格', '美元指数覆盖（FRED DTWEXAFEGS，可 DXY_FRED_SERIES）', '国债收益率历史', '联邦基金利率', '宏观扩展 API：准备金/WALCL/ON RRP/TGA/失业率'],
     apiKeyRequired: true,
     apiKeyEnvVar: 'FRED_API_KEY',
     freeLimit: '120次/分钟',
